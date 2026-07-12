@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: online_shop_db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-online_shop}
+      POSTGRES_USER: ${POSTGRES_USER:-shop_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shop_password_change_me}
+      TZ: Asia/Jakarta
+      PGTZ: Asia/Jakarta
+
+    ports:
+      - "${DB_PORT:-5432}:5432"
+
+    volumes:
+      # Data persisten — tidak hilang saat container restart
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-shop_user} -d ${POSTGRES_DB:-online_shop}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres_data:
+    driver: local

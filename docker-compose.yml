@@ -1,0 +1,77 @@
+version: "3.9"
+
+# ============================================================
+# Online Shop - Full Stack Docker Compose
+# Jalankan: docker compose up -d
+# ============================================================
+
+services:
+  # ----------------------------------------------------------
+  # DATABASE
+  # ----------------------------------------------------------
+  postgres:
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+    container_name: online_shop_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-online_shop}
+      POSTGRES_USER: ${POSTGRES_USER:-shop_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shop_password_change_me}
+      TZ: Asia/Jakarta
+      PGTZ: Asia/Jakarta
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-shop_user} -d ${POSTGRES_DB:-online_shop}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ----------------------------------------------------------
+  # BACKEND (Rust / Axum)
+  # ----------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: online_shop_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-shop_user}:${POSTGRES_PASSWORD:-shop_password_change_me}@postgres:5432/${POSTGRES_DB:-online_shop}
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      HOST: 0.0.0.0
+      PORT: 8080
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+
+  # ----------------------------------------------------------
+  # FRONTEND (React / Vite — production build via Nginx)
+  # ----------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: online_shop_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+
+volumes:
+  postgres_data:
+    driver: local

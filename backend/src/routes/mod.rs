@@ -1,0 +1,91 @@
+use axum::{
+    middleware,
+    routing::{delete, get, post, put, patch},
+    Router,
+};
+
+use crate::{
+    config::AppState,
+    handlers::{admin, auth, cart, address, category, order, product, user},
+    middleware::auth::{require_admin, require_auth},
+};
+
+pub fn create_router(state: AppState) -> Router {
+    let api = Router::new()
+        // Public routes
+        .merge(public_routes())
+        // Auth required routes
+        .merge(user_routes(state.clone()))
+        // Admin routes
+        .merge(admin_routes(state.clone()));
+
+    Router::new()
+        .nest("/api/v1", api)
+        .with_state(state)
+}
+
+fn public_routes() -> Router<AppState> {
+    Router::new()
+        // Auth
+        .route("/auth/register", post(auth::register))
+        .route("/auth/login", post(auth::login))
+        // Products (public)
+        .route("/products", get(product::list_products))
+        .route("/products/:slug", get(product::get_product))
+        // Categories (public)
+        .route("/categories", get(category::list_categories))
+        .route("/categories/:slug", get(category::get_category))
+}
+
+fn user_routes(state: AppState) -> Router<AppState> {
+    Router::new()
+        // Auth
+        .route("/auth/me", get(auth::me))
+        // Profile
+        .route("/profile", get(user::get_profile))
+        .route("/profile", put(user::update_profile))
+        .route("/profile/password", put(user::change_password))
+        // Cart
+        .route("/cart", get(cart::get_cart))
+        .route("/cart/items", post(cart::add_to_cart))
+        .route("/cart/items/:id", put(cart::update_cart_item))
+        .route("/cart/items/:id", delete(cart::remove_cart_item))
+        .route("/cart", delete(cart::clear_cart))
+        // Addresses
+        .route("/addresses", get(address::list_addresses))
+        .route("/addresses", post(address::create_address))
+        .route("/addresses/:id", put(address::update_address))
+        .route("/addresses/:id", delete(address::delete_address))
+        // Orders
+        .route("/orders", post(order::checkout))
+        .route("/orders", get(order::list_my_orders))
+        .route("/orders/:id", get(order::get_my_order))
+        .layer(middleware::from_fn_with_state(state, require_auth))
+}
+
+fn admin_routes(state: AppState) -> Router<AppState> {
+    Router::new()
+        // Dashboard
+        .route("/admin/dashboard", get(admin::dashboard_stats))
+        .route("/admin/reports", get(admin::sales_report))
+        // Users
+        .route("/admin/users", get(admin::list_users))
+        .route("/admin/users/:id/toggle-status", patch(admin::toggle_user_status))
+        // Categories
+        .route("/admin/categories", get(category::admin_list_categories))
+        .route("/admin/categories", post(category::create_category))
+        .route("/admin/categories/:id", put(category::update_category))
+        .route("/admin/categories/:id", delete(category::delete_category))
+        // Products
+        .route("/admin/products", get(product::admin_list_products))
+        .route("/admin/products", post(product::create_product))
+        .route("/admin/products/:id", get(product::admin_get_product))
+        .route("/admin/products/:id", put(product::update_product))
+        .route("/admin/products/:id", delete(product::delete_product))
+        // Orders
+        .route("/admin/orders", get(order::admin_list_orders))
+        .route("/admin/orders/:id", get(order::admin_get_order))
+        .route("/admin/orders/:id/status", patch(order::admin_update_order_status))
+        .layer(middleware::from_fn(require_admin))
+        .layer(middleware::from_fn_with_state(state, require_auth))
+}
