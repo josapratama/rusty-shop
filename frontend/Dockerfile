@@ -4,13 +4,13 @@
 # ============================================================
 
 # ---- Stage 1: Builder ----
-FROM node:20-alpine AS builder
+FROM oven/bun:1.2-alpine AS builder
 
 WORKDIR /app
 
-# Cache node_modules
-COPY package.json package-lock.json* ./
-RUN npm ci
+# Cache dependencies
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
 # Copy source dan build
 COPY . .
@@ -19,7 +19,7 @@ COPY . .
 ARG VITE_API_URL=/api/v1
 ENV VITE_API_URL=$VITE_API_URL
 
-RUN npm run build
+RUN bun run build
 
 # ---- Stage 2: Nginx ----
 FROM nginx:1.27-alpine AS runtime

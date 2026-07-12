@@ -1,5 +1,5 @@
 # ============================================================
-# rusty-shop — One command to start everything (Windows)
+# rusty-shop -- One command to start everything (Windows)
 # Usage: .\start.ps1 [-Build] [-Down] [-Logs]
 # ============================================================
 
@@ -10,14 +10,12 @@ param(
 )
 
 $ProjectDir = $PSScriptRoot
+$composeFile = Join-Path $ProjectDir "docker-compose.yml"
 
 function Write-Banner {
     Write-Host ""
-    Write-Host "  ██████  ██    ██ ███████ ████████ ██    ██     ███████ ██   ██  ██████  ██████  " -ForegroundColor Cyan
-    Write-Host "  ██   ██ ██    ██ ██         ██     ██  ██      ██      ██   ██ ██    ██ ██   ██ " -ForegroundColor Cyan
-    Write-Host "  ██████  ██    ██ ███████    ██      ████       ███████ ███████ ██    ██ ██████  " -ForegroundColor Cyan
-    Write-Host "  ██   ██ ██    ██      ██    ██       ██             ██ ██   ██ ██    ██ ██      " -ForegroundColor Cyan
-    Write-Host "  ██   ██  ██████  ███████    ██       ██        ███████ ██   ██  ██████  ██      " -ForegroundColor Cyan
+    Write-Host "  RUSTY-SHOP" -ForegroundColor Cyan
+    Write-Host "  Rust (Axum) + React + PostgreSQL" -ForegroundColor Cyan
     Write-Host ""
 }
 
@@ -25,18 +23,16 @@ function Setup-Env {
     $envFile = Join-Path $ProjectDir ".env"
     $envExample = Join-Path $ProjectDir ".env.example"
     if (-not (Test-Path $envFile)) {
-        Write-Host "⚙  .env not found — copying from .env.example" -ForegroundColor Yellow
+        Write-Host "  .env not found -- copying from .env.example" -ForegroundColor Yellow
         Copy-Item $envExample $envFile
-        Write-Host "✓  .env created. Edit it if needed, then re-run this script." -ForegroundColor Green
+        Write-Host "  .env created. Edit it if needed, then re-run." -ForegroundColor Green
     }
 }
-
-$composeFile = Join-Path $ProjectDir "docker-compose.yml"
 
 if ($Down) {
     Write-Host "Stopping all containers..." -ForegroundColor Yellow
     docker compose -f $composeFile down
-    Write-Host "✓  All containers stopped." -ForegroundColor Green
+    Write-Host "All containers stopped." -ForegroundColor Green
     exit 0
 }
 
@@ -57,13 +53,13 @@ if ($Build) {
 }
 
 Write-Host ""
-Write-Host "✓  All services are up!" -ForegroundColor Green
+Write-Host "All services are up!" -ForegroundColor Green
 Write-Host ""
-Write-Host "  🌐 Frontend  → http://localhost" -ForegroundColor White
-Write-Host "  🔌 Backend   → http://localhost:8080/api/v1" -ForegroundColor White
-Write-Host "  🗄  Database  → localhost:5432" -ForegroundColor White
+Write-Host "  Frontend  --> http://localhost"
+Write-Host "  Backend   --> http://localhost:8080/api/v1"
+Write-Host "  Database  --> localhost:5432"
 Write-Host ""
-Write-Host "  Logs  : .\start.ps1 -Logs" -ForegroundColor Yellow
-Write-Host "  Stop  : .\start.ps1 -Down" -ForegroundColor Yellow
-Write-Host "  Rebuild: .\start.ps1 -Build" -ForegroundColor Yellow
+Write-Host "  Logs   : " -NoNewline; Write-Host ".\start.ps1 -Logs" -ForegroundColor Yellow
+Write-Host "  Stop   : " -NoNewline; Write-Host ".\start.ps1 -Down" -ForegroundColor Yellow
+Write-Host "  Rebuild: " -NoNewline; Write-Host ".\start.ps1 -Build" -ForegroundColor Yellow
 Write-Host ""
