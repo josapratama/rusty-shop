@@ -1,4 +1,13 @@
-import { Routes, Route, ScrollRestoration } from "react-router-dom";
+import { useEffect } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
+
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
 
 // Layouts
 import UserLayout from "./layouts/UserLayout";
@@ -39,7 +48,7 @@ import AdminLoginPage from "./pages/admin/LoginPage";
 export default function App() {
   return (
     <>
-      <ScrollRestoration />
+      <ScrollToTop />
       <Routes>
         {/* Admin Login */}
         <Route path="/admin/login" element={<AdminLoginPage />} />
