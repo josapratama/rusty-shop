@@ -32,7 +32,50 @@ online-shop/
 
 ---
 
-## Cara Menjalankan
+## Quick Start
+
+Pastikan [Docker](https://docs.docker.com/get-docker/) sudah terinstall dan berjalan.
+
+**Linux / macOS:**
+
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+.\start.ps1
+```
+
+Setelah selesai:
+
+| Service  | URL                          |
+| -------- | ---------------------------- |
+| Frontend | http://localhost             |
+| API      | http://localhost:8080/api/v1 |
+| Database | localhost:5432               |
+
+**Perintah lainnya:**
+
+```bash
+# Lihat logs semua service
+./start.sh --logs          # atau: .\start.ps1 -Logs
+
+# Stop semua container
+./start.sh --down          # atau: .\start.ps1 -Down
+
+# Rebuild image (setelah ada perubahan kode)
+./start.sh --build         # atau: .\start.ps1 -Build
+```
+
+> Pertama kali menjalankan, script otomatis membuat `.env` dari `.env.example`.  
+> Ganti `POSTGRES_PASSWORD` dan `JWT_SECRET` sebelum deploy ke production.
+
+---
+
+## Cara Menjalankan (Manual)
 
 ### Opsi A — Hanya Database (Docker) + Backend & Frontend lokal
 
