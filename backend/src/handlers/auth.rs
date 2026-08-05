@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-// ── Row structs (used with query_as) ──────────────────────────────────────────
+// ── Row structs ───────────────────────────────────────────────────────────────
 
 #[derive(sqlx::FromRow)]
 struct UserRow {
@@ -82,9 +82,20 @@ pub async fn register(
     .fetch_one(&state.pool)
     .await?;
 
-    let token =
-        generate_token(user.id, &user.email, &user.role, &state.config.jwt_secret)
-            .map_err(|_| AppError::InternalServerError)?;
+    let token = generate_token(
+        user.id,
+        &user.email,
+        &user.role,
+        &state.config.jwt_secret,
+        state.config.jwt_expires_days,
+    )
+    .map_err(|e| { tracing::error!("generate_token (register) failed: {:?}", e); AppError::InternalServerError })?;
+    crate::utils::email::send_welcome(
+        &state.config,
+        &user.email,
+        &user.name,
+        &state.config.frontend_url,
+    );
 
     Ok(response::created(AuthResponse {
         token,
@@ -117,16 +128,21 @@ pub async fn login(
         return Err(AppError::Unauthorized("Account is disabled".to_string()));
     }
 
-    let valid =
-        verify_password(&body.password, &user.password).map_err(|_| AppError::InternalServerError)?;
+    let valid = verify_password(&body.password, &user.password)
+        .map_err(|_| AppError::InternalServerError)?;
 
     if !valid {
         return Err(AppError::Unauthorized("Invalid email or password".to_string()));
     }
 
-    let token =
-        generate_token(user.id, &user.email, &user.role, &state.config.jwt_secret)
-            .map_err(|_| AppError::InternalServerError)?;
+    let token = generate_token(
+        user.id,
+        &user.email,
+        &user.role,
+        &state.config.jwt_secret,
+        state.config.jwt_expires_days,
+    )
+    .map_err(|e| { tracing::error!("generate_token (login) failed: {:?}", e); AppError::InternalServerError })?;
 
     Ok(response::success(AuthResponse {
         token,

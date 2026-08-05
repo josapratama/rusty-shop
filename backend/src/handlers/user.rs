@@ -137,7 +137,7 @@ pub async fn change_password(
 
     let hashed = hash_password(&body.new_password).map_err(|_| AppError::InternalServerError)?;
 
-    sqlx::query("UPDATE users SET password = $1 WHERE id = $2")
+    sqlx::query("UPDATE users SET password = $1, password_changed_at = NOW() WHERE id = $2")
         .bind(&hashed)
         .bind(user_id)
         .execute(&state.pool)

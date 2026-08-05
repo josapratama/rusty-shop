@@ -132,7 +132,11 @@ pub async fn list_products(
              AND ($2::text IS NULL OR c.slug = $2)
              AND ($3::numeric IS NULL OR p.price >= $3)
              AND ($4::numeric IS NULL OR p.price <= $4)
-           ORDER BY p.created_at DESC
+           ORDER BY
+             CASE WHEN $7 = 'price_asc'  THEN p.price::text END ASC,
+             CASE WHEN $7 = 'price_desc' THEN p.price::text END DESC,
+             CASE WHEN $7 = 'name_asc'   THEN p.name END ASC,
+             p.created_at DESC
            LIMIT $5 OFFSET $6"#,
     )
     .bind(&search)
@@ -141,6 +145,7 @@ pub async fn list_products(
     .bind(params.max_price)
     .bind(per_page)
     .bind(offset)
+    .bind(params.sort.as_deref())
     .fetch_all(&state.pool)
     .await?;
 
@@ -479,14 +484,18 @@ pub async fn delete_product(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<impl axum::response::IntoResponse> {
-    let result = sqlx::query("DELETE FROM products WHERE id = $1")
-        .bind(id)
-        .execute(&state.pool)
-        .await?;
+    // Soft-delete: set is_active = false instead of hard delete
+    // Hard delete would fail with FK constraint if product has orders
+    let result = sqlx::query(
+        "UPDATE products SET is_active = FALSE WHERE id = $1",
+    )
+    .bind(id)
+    .execute(&state.pool)
+    .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("Product not found".to_string()));
     }
 
-    Ok(response::message("Product deleted successfully"))
+    Ok(response::message("Product deactivated successfully"))
 }

@@ -53,4 +53,5 @@ pub struct ProductQueryParams {
     pub search: Option<String>,
     pub min_price: Option<Decimal>,
     pub max_price: Option<Decimal>,
+    pub sort: Option<String>, // "price_asc" | "price_desc" | "name_asc" | "newest"
 }
