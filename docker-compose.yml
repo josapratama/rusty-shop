@@ -48,13 +48,24 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-shop_user}:${POSTGRES_PASSWORD:-shop_password_change_me}@postgres:5432/${POSTGRES_DB:-online_shop}
-      JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production}
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production-min-32-chars}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       HOST: 0.0.0.0
       PORT: 8080
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      BASE_URL: ${BASE_URL:-http://localhost:8080}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      APP_NAME: ${APP_NAME:-Online Shop}
+      UPLOAD_DIR: /app/uploads
+      # Email (opsional)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@example.com}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - uploads_data:/app/uploads
 
   # ----------------------------------------------------------
   # FRONTEND (React / Vite — production build via Nginx)
@@ -72,4 +83,6 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  uploads_data:
     driver: local
