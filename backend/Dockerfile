@@ -39,7 +39,9 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /app/target/release/server ./server
 
 # Non-root user untuk keamanan
-RUN useradd -r -s /bin/false appuser
+RUN useradd -r -s /bin/false appuser \
+    && mkdir -p /app/uploads \
+    && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8080
