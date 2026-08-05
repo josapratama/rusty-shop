@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cartService } from "../../services/cartService";
@@ -72,12 +72,12 @@ export default function CheckoutPage() {
   });
 
   // Auto-select default address
-  useState(() => {
+  useEffect(() => {
     if (addresses && addresses.length > 0 && !selectedAddress) {
       const def = addresses.find((a) => a.is_default) ?? addresses[0];
       setSelectedAddress(def.id);
     }
-  });
+  }, [addresses, selectedAddress]);
 
   const handleAddAddress = async (e: FormEvent) => {
     e.preventDefault();

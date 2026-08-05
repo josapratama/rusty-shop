@@ -1,20 +1,65 @@
 import { useParams, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { orderService } from "../../services/orderService";
 import { formatCurrency, formatDateTime } from "../../utils/format";
 import StatusBadge from "../../components/ui/StatusBadge";
 import LoadingSpinner from "../../components/ui/LoadingSpinner";
 import type { Order } from "../../types";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Upload } from "lucide-react";
+import toast from "react-hot-toast";
+import { useState, useRef } from "react";
 
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const queryClient = useQueryClient();
+  const [cancelling, setCancelling] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: order, isLoading } = useQuery<Order>({
     queryKey: ["order", id],
     queryFn: () => orderService.get(id!).then((r) => r.data.data),
     enabled: !!id,
   });
+
+  const handleCancel = async () => {
+    if (!id || !window.confirm("Yakin ingin membatalkan pesanan ini?")) return;
+    setCancelling(true);
+    try {
+      await orderService.cancel(id);
+      toast.success("Pesanan berhasil dibatalkan");
+      void queryClient.invalidateQueries({ queryKey: ["order", id] });
+      void queryClient.invalidateQueries({ queryKey: ["orders"] });
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? "Gagal membatalkan pesanan";
+      toast.error(msg);
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  const handleUploadProof = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !id) return;
+    setUploading(true);
+    try {
+      const uploadRes = await orderService.uploadPaymentProof(file);
+      const url = uploadRes.data.data.url;
+      await orderService.setPaymentProof(id, url);
+      toast.success("Bukti pembayaran berhasil diunggah");
+      void queryClient.invalidateQueries({ queryKey: ["order", id] });
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? "Gagal mengunggah bukti pembayaran";
+      toast.error(msg);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   if (isLoading) return <LoadingSpinner />;
   if (!order)
@@ -42,7 +87,18 @@ export default function OrderDetailPage() {
             {formatDateTime(order.created_at)}
           </p>
         </div>
-        <StatusBadge status={order.status} />
+        <div className="flex items-center gap-3">
+          <StatusBadge status={order.status} />
+          {order.status === "pending" && (
+            <button
+              onClick={handleCancel}
+              disabled={cancelling}
+              className="text-sm text-red-600 border border-red-300 rounded-lg px-3 py-1.5 hover:bg-red-50 disabled:opacity-50 transition-colors"
+            >
+              {cancelling ? "Membatalkan..." : "Batalkan Pesanan"}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -125,8 +181,69 @@ export default function OrderDetailPage() {
                   Nominal: <strong>{formatCurrency(order.total)}</strong>
                 </p>
                 <p className="text-xs mt-2">
-                  Konfirmasi pembayaran ke admin setelah transfer.
+                  Setelah transfer, upload bukti pembayaran di bawah.
                 </p>
+              </div>
+            )}
+
+          {/* Payment proof upload — only for bank_transfer in pending/paid */}
+          {order.payment_method === "bank_transfer" &&
+            (order.status === "pending" || order.status === "paid") && (
+              <div className="mt-4">
+                {order.payment_proof ? (
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-2">
+                      Bukti Pembayaran:
+                    </p>
+                    <a
+                      href={order.payment_proof}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <img
+                        src={order.payment_proof}
+                        alt="Bukti pembayaran"
+                        className="max-h-48 rounded-lg border border-gray-200 object-contain"
+                      />
+                    </a>
+                    {order.status === "pending" && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Klik tombol di bawah untuk mengganti bukti pembayaran.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">
+                    Belum ada bukti pembayaran.
+                  </p>
+                )}
+
+                {order.status === "pending" && (
+                  <div className="mt-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleUploadProof}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="flex items-center gap-2 text-sm text-primary-600 border border-primary-300 rounded-lg px-3 py-1.5 hover:bg-primary-50 disabled:opacity-50 transition-colors"
+                    >
+                      <Upload size={14} />
+                      {uploading
+                        ? "Mengunggah..."
+                        : order.payment_proof
+                          ? "Ganti Bukti Transfer"
+                          : "Upload Bukti Transfer"}
+                    </button>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Format: JPG, PNG, WebP. Maks 5 MB.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
         </div>

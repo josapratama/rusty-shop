@@ -25,7 +25,9 @@ export default function Navbar() {
 
   useEffect(() => {
     if (cartData) {
-      setItemCount(cartData.items?.length ?? 0);
+      const totalQty =
+        cartData.items?.reduce((acc, i) => acc + i.quantity, 0) ?? 0;
+      setItemCount(totalQty);
     }
   }, [cartData, setItemCount]);
 

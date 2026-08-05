@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cartService } from "../../services/cartService";
-import { useCartStore } from "../../store/cartStore";
+
 import { formatCurrency } from "../../utils/format";
 import LoadingSpinner from "../../components/ui/LoadingSpinner";
 import type { Cart } from "../../types";
@@ -10,7 +10,6 @@ import toast from "react-hot-toast";
 
 export default function CartPage() {
   const queryClient = useQueryClient();
-  const { setItemCount } = useCartStore();
   const navigate = useNavigate();
 
   const { data: cart, isLoading } = useQuery<Cart>({
@@ -34,7 +33,6 @@ export default function CartPage() {
     try {
       await cartService.removeItem(id);
       void queryClient.invalidateQueries({ queryKey: ["cart"] });
-      setItemCount(Math.max(0, (cart?.items?.length ?? 1) - 1));
       toast.success("Item dihapus dari keranjang");
     } catch {
       toast.error("Gagal menghapus item");
@@ -44,6 +42,7 @@ export default function CartPage() {
   if (isLoading) return <LoadingSpinner />;
 
   const items = cart?.items ?? [];
+  const hasStockIssue = items.some((i) => i.stock < i.quantity);
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -85,6 +84,17 @@ export default function CartPage() {
                   >
                     {item.product_name}
                   </Link>
+                  {item.stock === 0 && (
+                    <p className="text-xs text-red-600 font-medium mt-0.5">
+                      ⚠ Stok habis — hapus item ini sebelum checkout
+                    </p>
+                  )}
+                  {item.stock > 0 && item.stock < item.quantity && (
+                    <p className="text-xs text-orange-600 font-medium mt-0.5">
+                      ⚠ Stok tersisa {item.stock} — kurangi jumlah sebelum
+                      checkout
+                    </p>
+                  )}
                   <p className="text-primary-600 font-semibold mt-1">
                     {formatCurrency(item.price)}
                   </p>
@@ -152,9 +162,10 @@ export default function CartPage() {
             </div>
             <button
               onClick={() => navigate("/checkout")}
-              className="btn-primary w-full py-3"
+              disabled={hasStockIssue}
+              className="btn-primary w-full py-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Lanjut ke Checkout
+              {hasStockIssue ? "Perbaiki stok dulu" : "Lanjut ke Checkout"}
             </button>
           </div>
         </div>

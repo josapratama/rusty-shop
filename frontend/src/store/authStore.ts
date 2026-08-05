@@ -27,6 +27,15 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "auth-storage",
+      storage: {
+        getItem: (key) => {
+          const val = sessionStorage.getItem(key);
+          return val ? JSON.parse(val) : null;
+        },
+        setItem: (key, value) =>
+          sessionStorage.setItem(key, JSON.stringify(value)),
+        removeItem: (key) => sessionStorage.removeItem(key),
+      },
     },
   ),
 );

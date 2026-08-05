@@ -224,16 +224,56 @@ export default function OrdersPage() {
                   </div>
                 ))}
               </div>
-              <div className="border-t mt-2 pt-2 flex justify-between font-bold">
-                <span>Total</span>
-                <span className="text-primary-600">
-                  {formatCurrency(selectedOrder.total)}
-                </span>
+              <div className="border-t mt-2 pt-2 space-y-1 text-sm">
+                <div className="flex justify-between text-gray-500">
+                  <span>Subtotal</span>
+                  <span>{formatCurrency(selectedOrder.subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-gray-500">
+                  <span>Ongkos kirim</span>
+                  <span>{formatCurrency(selectedOrder.shipping_cost)}</span>
+                </div>
+                <div className="flex justify-between font-bold border-t pt-1">
+                  <span>Total</span>
+                  <span className="text-primary-600">
+                    {formatCurrency(selectedOrder.total)}
+                  </span>
+                </div>
               </div>
             </div>
 
+            {/* Payment proof */}
+            {selectedOrder.payment_method === "bank_transfer" && (
+              <div className="mb-4">
+                <h3 className="font-medium text-sm text-gray-700 mb-2">
+                  Bukti Pembayaran
+                </h3>
+                {selectedOrder.payment_proof ? (
+                  <a
+                    href={selectedOrder.payment_proof}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block"
+                  >
+                    <img
+                      src={selectedOrder.payment_proof}
+                      alt="Bukti pembayaran"
+                      className="max-h-48 rounded-lg border border-gray-200 object-contain cursor-zoom-in"
+                    />
+                    <p className="text-xs text-primary-600 mt-1">
+                      Klik untuk buka full size
+                    </p>
+                  </a>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">
+                    Belum ada bukti pembayaran
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Shipping */}
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-gray-600 mb-4">
               <p className="font-medium text-gray-900 mb-1">Pengiriman ke:</p>
               <p>
                 {selectedOrder.shipping_name} - {selectedOrder.shipping_phone}
@@ -244,6 +284,20 @@ export default function OrdersPage() {
                 {selectedOrder.shipping_postal}
               </p>
             </div>
+
+            {/* Customer info */}
+            {(selectedOrder.user_name || selectedOrder.user_email) && (
+              <div className="text-sm text-gray-600 border-t pt-3">
+                <p className="font-medium text-gray-900 mb-1">Pelanggan:</p>
+                {selectedOrder.user_name && <p>{selectedOrder.user_name}</p>}
+                {selectedOrder.user_email && (
+                  <p className="text-gray-400">{selectedOrder.user_email}</p>
+                )}
+                {selectedOrder.user_phone && (
+                  <p className="text-gray-400">{selectedOrder.user_phone}</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
