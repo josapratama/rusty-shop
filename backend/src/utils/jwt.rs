@@ -19,9 +19,10 @@ pub fn generate_token(
     email: &str,
     role: &UserRole,
     secret: &str,
+    expires_days: i64,
 ) -> Result<String, jsonwebtoken::errors::Error> {
     let now = Utc::now();
-    let expiry = now + Duration::days(7);
+    let expiry = now + Duration::days(expires_days);
 
     let claims = Claims {
         sub: user_id.to_string(),
