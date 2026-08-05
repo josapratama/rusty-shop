@@ -3,14 +3,24 @@ use axum::{
     routing::{delete, get, post, put, patch},
     Router,
 };
+use std::sync::Arc;
+use tower::ServiceBuilder;
+use tower_governor::{
+    governor::GovernorConfigBuilder,
+    key_extractor::GlobalKeyExtractor,
+    GovernorLayer,
+};
+use tower_http::services::ServeDir;
 
 use crate::{
     config::AppState,
-    handlers::{admin, auth, cart, address, category, order, product, user},
+    handlers::{admin, auth, cart, address, category, order, product, upload, user},
     middleware::auth::{require_admin, require_auth},
 };
 
 pub fn create_router(state: AppState) -> Router {
+    let upload_dir = state.config.upload_dir.clone();
+
     let api = Router::new()
         // Public routes
         .merge(public_routes())
@@ -21,14 +31,31 @@ pub fn create_router(state: AppState) -> Router {
 
     Router::new()
         .nest("/api/v1", api)
+        // Serve uploaded files as static assets
+        .nest_service("/uploads", ServeDir::new(upload_dir))
         .with_state(state)
 }
 
 fn public_routes() -> Router<AppState> {
+    // Rate limit auth endpoints: 30 requests per minute globally
+    // burst_size=10, per_second=2 → replenish 1 token every 2s = 30 req/min
+    let auth_rate_limit = Arc::new(
+        GovernorConfigBuilder::default()
+            .key_extractor(GlobalKeyExtractor)
+            .per_second(2)
+            .burst_size(10)
+            .finish()
+            .expect("Invalid rate limit config"),
+    );
+
     Router::new()
-        // Auth
+        // Auth (rate-limited)
         .route("/auth/register", post(auth::register))
         .route("/auth/login", post(auth::login))
+        .layer(
+            ServiceBuilder::new()
+                .layer(GovernorLayer { config: auth_rate_limit }),
+        )
         // Products (public)
         .route("/products", get(product::list_products))
         .route("/products/:slug", get(product::get_product))
@@ -60,6 +87,10 @@ fn user_routes(state: AppState) -> Router<AppState> {
         .route("/orders", post(order::checkout))
         .route("/orders", get(order::list_my_orders))
         .route("/orders/:id", get(order::get_my_order))
+        .route("/orders/:id/cancel", post(order::cancel_order))
+        .route("/orders/:id/payment-proof", post(upload::set_order_payment_proof))
+        // Upload
+        .route("/upload/payment-proof", post(upload::upload_payment_proof))
         .layer(middleware::from_fn_with_state(state, require_auth))
 }
 

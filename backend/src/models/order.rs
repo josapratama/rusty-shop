@@ -3,6 +3,7 @@ use sqlx::Type;
 
 /// Order status enum — dipakai di handler row structs dan DTO.
 #[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
+#[serde(rename_all = "lowercase")]
 #[sqlx(type_name = "order_status", rename_all = "lowercase")]
 pub enum OrderStatus {
     Pending,
@@ -28,6 +29,7 @@ impl std::fmt::Display for OrderStatus {
 
 /// Payment method enum — dipakai di handler row structs dan DTO.
 #[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
+#[serde(rename_all = "snake_case")]
 #[sqlx(type_name = "payment_method", rename_all = "snake_case")]
 pub enum PaymentMethod {
     BankTransfer,
