@@ -23,11 +23,11 @@ RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/li
 COPY backend/Cargo.toml backend/Cargo.lock ./backend/
 RUN mkdir -p backend/src && echo "fn main() {}" > backend/src/main.rs
 RUN cd backend && cargo build --release || true
-RUN rm -rf backend/src backend/target/release/deps/online_shop_backend* backend/target/release/server*
+RUN rm -rf backend/src backend/target/release/deps/online_shop_backend* backend/target/release/server* backend/target/release/.fingerprint/online_shop_backend*
 
 COPY database/migrations ./database/migrations
 COPY backend/src ./backend/src
-RUN cd backend && cargo build --release
+RUN touch backend/src/main.rs && cd backend && cargo build --release
 
 # ── Stage 3: Production Runtime ─────────────────────────────────────────────
 FROM debian:bookworm-slim
