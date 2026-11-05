@@ -18,11 +18,11 @@ RUN apt-get update && apt-get install -y \
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs
 RUN cargo build --release
-RUN rm -rf src
+RUN rm -rf src target/release/deps/online_shop_backend* target/release/server*
 
 # Copy source code dan build ulang
 COPY src ./src
-RUN touch src/main.rs && cargo build --release
+RUN cargo build --release
 
 # ---- Stage 2: Runtime ----
 FROM debian:bookworm-slim AS runtime

@@ -29,6 +29,9 @@ pub fn create_router(state: AppState) -> Router {
         // Admin routes
         .merge(admin_routes(state.clone()));
 
+    // Ensure upload directory exists
+    let _ = std::fs::create_dir_all(&upload_dir);
+
     Router::new()
         .nest("/api/v1", api)
         // Serve uploaded files as static assets

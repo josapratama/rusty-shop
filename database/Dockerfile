@@ -15,6 +15,7 @@ ENV TZ=Asia/Jakarta
 # saat container pertama kali dibuat (database belum ada).
 COPY migrations/001_init.sql /docker-entrypoint-initdb.d/001_init.sql
 COPY migrations/002_seed.sql /docker-entrypoint-initdb.d/002_seed.sql
+COPY migrations/003_improvements.sql /docker-entrypoint-initdb.d/003_improvements.sql
 
 # Expose port default PostgreSQL
 EXPOSE 5432
