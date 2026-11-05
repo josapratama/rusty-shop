@@ -10,7 +10,7 @@ use tower_governor::{
     key_extractor::GlobalKeyExtractor,
     GovernorLayer,
 };
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
     config::AppState,
@@ -32,11 +32,22 @@ pub fn create_router(state: AppState) -> Router {
     // Ensure upload directory exists
     let _ = std::fs::create_dir_all(&upload_dir);
 
-    Router::new()
+    let mut router = Router::new()
         .nest("/api/v1", api)
         // Serve uploaded files as static assets
-        .nest_service("/uploads", ServeDir::new(upload_dir))
-        .with_state(state)
+        .nest_service("/uploads", ServeDir::new(upload_dir));
+
+    let dist_dir = std::env::var("FRONTEND_DIST").unwrap_or_else(|_| "dist".to_string());
+    let dist_path = std::path::Path::new(&dist_dir);
+    if dist_path.is_dir() {
+        let index_file = dist_path.join("index.html");
+        if index_file.is_file() {
+            let serve_dir = ServeDir::new(dist_path).fallback(ServeFile::new(index_file));
+            router = router.fallback_service(serve_dir);
+        }
+    }
+
+    router.with_state(state)
 }
 
 fn public_routes() -> Router<AppState> {
