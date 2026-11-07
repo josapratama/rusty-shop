@@ -94,10 +94,13 @@ export interface ProductListItem {
   name: string;
   slug: string;
   price: number;
+  original_price?: number | null;
   stock: number;
   category_name: string;
   category_slug: string;
   primary_image: string | null;
+  rating?: number | null;
+  review_count?: number;
   is_active?: boolean;
   created_at?: string;
 }
@@ -111,10 +114,13 @@ export interface ProductDetail {
   slug: string;
   description: string | null;
   price: number;
+  original_price?: number | null;
   stock: number;
   weight: number | null;
   is_active: boolean;
   images: ProductImage[];
+  rating?: number | null;
+  review_count?: number;
   created_at: string;
   updated_at: string;
 }
@@ -130,6 +136,7 @@ export interface CreateProductRequest {
   name: string;
   description?: string;
   price: number;
+  original_price?: number;
   stock: number;
   weight?: number;
   is_active?: boolean;
@@ -141,6 +148,7 @@ export interface UpdateProductRequest {
   name?: string;
   description?: string;
   price?: number;
+  original_price?: number;
   stock?: number;
   weight?: number;
   is_active?: boolean;
@@ -248,6 +256,10 @@ export interface Order {
   payment_proof: string | null;
   subtotal: number;
   shipping_cost: number;
+  discount_amount?: number;
+  coupon_code?: string | null;
+  courier?: string | null;
+  tracking_number?: string | null;
   total: number;
   shipping_name: string;
   shipping_phone: string;
@@ -271,6 +283,9 @@ export interface OrderListItem {
   payment_method: PaymentMethod;
   subtotal: number;
   shipping_cost: number;
+  discount_amount?: number;
+  courier?: string | null;
+  tracking_number?: string | null;
   total: number;
   user_name?: string;
   user_email?: string;
@@ -281,10 +296,103 @@ export interface CheckoutRequest {
   address_id: string;
   payment_method: PaymentMethod;
   notes?: string;
+  coupon_code?: string;
 }
 
 export interface UpdateOrderStatusRequest {
   status: OrderStatus;
+  courier?: string;
+  tracking_number?: string;
+}
+
+// ============================================================
+// Coupons
+// ============================================================
+
+export interface Coupon {
+  id: string;
+  code: string;
+  description: string | null;
+  discount_type: "percentage" | "fixed";
+  discount_value: number;
+  min_purchase: number;
+  max_discount: number | null;
+  usage_limit: number | null;
+  used_count: number;
+  is_active: boolean;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export interface CreateCouponRequest {
+  code: string;
+  description?: string;
+  discount_type: "percentage" | "fixed";
+  discount_value: number;
+  min_purchase?: number;
+  max_discount?: number;
+  usage_limit?: number;
+  expires_at?: string;
+  is_active?: boolean;
+}
+
+export interface UpdateCouponRequest {
+  description?: string;
+  discount_type?: "percentage" | "fixed";
+  discount_value?: number;
+  min_purchase?: number;
+  max_discount?: number;
+  usage_limit?: number;
+  expires_at?: string;
+  is_active?: boolean;
+}
+
+export interface CouponValidationResponse {
+  valid: boolean;
+  coupon_id?: string;
+  code: string;
+  discount_type: string;
+  discount_value: number;
+  discount_amount: number;
+  description?: string;
+}
+
+// ============================================================
+// Reviews & Ratings
+// ============================================================
+
+export interface Review {
+  id: string;
+  product_id: string;
+  user_id: string;
+  order_id: string | null;
+  rating: number;
+  comment: string | null;
+  user_name: string;
+  created_at: string;
+}
+
+export interface CreateReviewRequest {
+  product_id: string;
+  order_id?: string;
+  rating: number;
+  comment?: string;
+}
+
+// ============================================================
+// Wishlist
+// ============================================================
+
+export interface WishlistItem {
+  id: string;
+  product_id: string;
+  name: string;
+  slug: string;
+  price: number;
+  original_price: number | null;
+  stock: number;
+  category_name: string;
+  primary_image: string | null;
 }
 
 export interface OrderQueryParams {

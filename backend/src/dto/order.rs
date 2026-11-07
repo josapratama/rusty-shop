@@ -9,11 +9,14 @@ pub struct CheckoutRequest {
     pub address_id: Uuid,
     pub payment_method: PaymentMethod,
     pub notes: Option<String>,
+    pub coupon_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateOrderStatusRequest {
     pub status: OrderStatus,
+    pub courier: Option<String>,
+    pub tracking_number: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

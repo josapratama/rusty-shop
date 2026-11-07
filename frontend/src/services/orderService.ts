@@ -57,8 +57,15 @@ export const orderService = {
 
   adminGet: (id: string) => api.get<ApiResponse<Order>>(`/admin/orders/${id}`),
 
-  updateStatus: (id: string, status: OrderStatus) =>
+  updateStatus: (
+    id: string,
+    status: OrderStatus,
+    courier?: string,
+    tracking_number?: string
+  ) =>
     api.patch<ApiResponse<Order>>(`/admin/orders/${id}/status`, {
       status,
+      courier,
+      tracking_number,
     } satisfies UpdateOrderStatusRequest),
 };

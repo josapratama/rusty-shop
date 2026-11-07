@@ -24,12 +24,15 @@ struct ProductListRow {
     name: String,
     slug: String,
     price: Decimal,
+    original_price: Option<Decimal>,
     stock: i32,
     #[allow(dead_code)]
     is_active: bool,
     category_name: String,
     category_slug: String,
     primary_image: Option<String>,
+    rating: Option<Decimal>,
+    review_count: Option<i64>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -40,6 +43,7 @@ struct ProductDetailRow {
     slug: String,
     description: Option<String>,
     price: Decimal,
+    original_price: Option<Decimal>,
     stock: i32,
     weight: Option<Decimal>,
     is_active: bool,
@@ -47,6 +51,8 @@ struct ProductDetailRow {
     category_slug: String,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+    rating: Option<Decimal>,
+    review_count: Option<i64>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -57,6 +63,7 @@ struct ProductAdminDetailRow {
     slug: String,
     description: Option<String>,
     price: Decimal,
+    original_price: Option<Decimal>,
     stock: i32,
     weight: Option<Decimal>,
     is_active: bool,
@@ -79,6 +86,7 @@ struct ProductInsertRow {
     name: String,
     slug: String,
     price: Decimal,
+    original_price: Option<Decimal>,
     stock: i32,
     is_active: bool,
     created_at: DateTime<Utc>,
@@ -90,6 +98,7 @@ struct ProductUpdateRow {
     name: String,
     slug: String,
     price: Decimal,
+    original_price: Option<Decimal>,
     stock: i32,
     is_active: bool,
     updated_at: DateTime<Utc>,
@@ -104,6 +113,7 @@ struct ProductExistingRow {
     slug: String,
     description: Option<String>,
     price: Decimal,
+    original_price: Option<Decimal>,
     stock: i32,
     weight: Option<Decimal>,
     is_active: bool,
@@ -121,10 +131,12 @@ pub async fn list_products(
     let search = params.search.as_deref().map(|s| format!("%{s}%"));
 
     let products = sqlx::query_as::<_, ProductListRow>(
-        r#"SELECT p.id, p.name, p.slug, p.price, p.stock, p.is_active,
+        r#"SELECT p.id, p.name, p.slug, p.price, p.original_price, p.stock, p.is_active,
                   c.name AS category_name, c.slug AS category_slug,
                   (SELECT image_url FROM product_images
-                   WHERE product_id = p.id AND is_primary = TRUE LIMIT 1) AS primary_image
+                   WHERE product_id = p.id AND is_primary = TRUE LIMIT 1) AS primary_image,
+                  (SELECT ROUND(AVG(rating)::numeric, 1) FROM reviews WHERE product_id = p.id) AS rating,
+                  (SELECT COUNT(*) FROM reviews WHERE product_id = p.id) AS review_count
            FROM products p
            JOIN categories c ON c.id = p.category_id
            WHERE p.is_active = TRUE
@@ -173,10 +185,13 @@ pub async fn list_products(
                 "name": p.name,
                 "slug": p.slug,
                 "price": p.price,
+                "original_price": p.original_price,
                 "stock": p.stock,
                 "category_name": p.category_name,
                 "category_slug": p.category_slug,
                 "primary_image": p.primary_image,
+                "rating": p.rating,
+                "review_count": p.review_count.unwrap_or(0),
             })
         })
         .collect();
@@ -190,8 +205,10 @@ pub async fn get_product(
 ) -> AppResult<impl axum::response::IntoResponse> {
     let product = sqlx::query_as::<_, ProductDetailRow>(
         r#"SELECT p.id, p.category_id, p.name, p.slug, p.description,
-                  p.price, p.stock, p.weight, p.is_active, p.created_at, p.updated_at,
-                  c.name AS category_name, c.slug AS category_slug
+                  p.price, p.original_price, p.stock, p.weight, p.is_active, p.created_at, p.updated_at,
+                  c.name AS category_name, c.slug AS category_slug,
+                  (SELECT ROUND(AVG(rating)::numeric, 1) FROM reviews WHERE product_id = p.id) AS rating,
+                  (SELECT COUNT(*) FROM reviews WHERE product_id = p.id) AS review_count
            FROM products p
            JOIN categories c ON c.id = p.category_id
            WHERE p.slug = $1 AND p.is_active = TRUE"#,
@@ -218,13 +235,72 @@ pub async fn get_product(
         "slug": product.slug,
         "description": product.description,
         "price": product.price,
+        "original_price": product.original_price,
         "stock": product.stock,
         "weight": product.weight,
         "is_active": product.is_active,
         "images": images,
+        "rating": product.rating,
+        "review_count": product.review_count.unwrap_or(0),
         "created_at": product.created_at,
         "updated_at": product.updated_at,
     })))
+}
+
+pub async fn get_related_products(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> AppResult<impl axum::response::IntoResponse> {
+    let current_product = sqlx::query_scalar::<_, (Uuid, Uuid)>(
+        "SELECT id, category_id FROM products WHERE slug = $1 AND is_active = TRUE",
+    )
+    .bind(&slug)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let (product_id, category_id) = match current_product {
+        Some((p_id, c_id)) => (p_id, c_id),
+        None => return Ok(response::success(Vec::<serde_json::Value>::new())),
+    };
+
+    let related = sqlx::query_as::<_, ProductListRow>(
+        r#"SELECT p.id, p.name, p.slug, p.price, p.original_price, p.stock, p.is_active,
+                  c.name AS category_name, c.slug AS category_slug,
+                  (SELECT image_url FROM product_images
+                   WHERE product_id = p.id AND is_primary = TRUE LIMIT 1) AS primary_image,
+                  (SELECT ROUND(AVG(rating)::numeric, 1) FROM reviews WHERE product_id = p.id) AS rating,
+                  (SELECT COUNT(*) FROM reviews WHERE product_id = p.id) AS review_count
+           FROM products p
+           JOIN categories c ON c.id = p.category_id
+           WHERE p.category_id = $1 AND p.id != $2 AND p.is_active = TRUE
+           ORDER BY p.created_at DESC
+           LIMIT 4"#,
+    )
+    .bind(category_id)
+    .bind(product_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let data: Vec<_> = related
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "id": p.id,
+                "name": p.name,
+                "slug": p.slug,
+                "price": p.price,
+                "original_price": p.original_price,
+                "stock": p.stock,
+                "category_name": p.category_name,
+                "category_slug": p.category_slug,
+                "primary_image": p.primary_image,
+                "rating": p.rating,
+                "review_count": p.review_count.unwrap_or(0),
+            })
+        })
+        .collect();
+
+    Ok(response::success(data))
 }
 
 // ── Admin handlers ────────────────────────────────────────────────────────────
@@ -244,6 +320,7 @@ pub async fn admin_list_products(
         name: String,
         slug: String,
         price: Decimal,
+        original_price: Option<Decimal>,
         stock: i32,
         is_active: bool,
         category_name: String,
@@ -252,7 +329,7 @@ pub async fn admin_list_products(
     }
 
     let products = sqlx::query_as::<_, Row>(
-        r#"SELECT p.id, p.name, p.slug, p.price, p.stock, p.is_active, p.created_at,
+        r#"SELECT p.id, p.name, p.slug, p.price, p.original_price, p.stock, p.is_active, p.created_at,
                   c.name AS category_name,
                   (SELECT image_url FROM product_images
                    WHERE product_id = p.id AND is_primary = TRUE LIMIT 1) AS primary_image
@@ -283,6 +360,7 @@ pub async fn admin_list_products(
                 "name": p.name,
                 "slug": p.slug,
                 "price": p.price,
+                "original_price": p.original_price,
                 "stock": p.stock,
                 "is_active": p.is_active,
                 "category_name": p.category_name,
@@ -301,7 +379,7 @@ pub async fn admin_get_product(
 ) -> AppResult<impl axum::response::IntoResponse> {
     let product = sqlx::query_as::<_, ProductAdminDetailRow>(
         r#"SELECT p.id, p.category_id, p.name, p.slug, p.description,
-                  p.price, p.stock, p.weight, p.is_active, p.created_at, p.updated_at,
+                  p.price, p.original_price, p.stock, p.weight, p.is_active, p.created_at, p.updated_at,
                   c.name AS category_name
            FROM products p
            JOIN categories c ON c.id = p.category_id
@@ -328,6 +406,7 @@ pub async fn admin_get_product(
         "slug": product.slug,
         "description": product.description,
         "price": product.price,
+        "original_price": product.original_price,
         "stock": product.stock,
         "weight": product.weight,
         "is_active": product.is_active,
@@ -366,15 +445,16 @@ pub async fn create_product(
     }
 
     let product = sqlx::query_as::<_, ProductInsertRow>(
-        "INSERT INTO products (category_id, name, slug, description, price, stock, weight, is_active)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING id, name, slug, price, stock, is_active, created_at",
+        "INSERT INTO products (category_id, name, slug, description, price, original_price, stock, weight, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING id, name, slug, price, original_price, stock, is_active, created_at",
     )
     .bind(body.category_id)
     .bind(&body.name)
     .bind(&slug)
     .bind(&body.description)
     .bind(body.price)
+    .bind(body.original_price)
     .bind(body.stock)
     .bind(body.weight)
     .bind(body.is_active.unwrap_or(true))
@@ -401,6 +481,7 @@ pub async fn create_product(
         "name": product.name,
         "slug": product.slug,
         "price": product.price,
+        "original_price": product.original_price,
         "stock": product.stock,
         "is_active": product.is_active,
         "created_at": product.created_at,
@@ -415,7 +496,7 @@ pub async fn update_product(
     body.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
 
     let existing = sqlx::query_as::<_, ProductExistingRow>(
-        "SELECT id, category_id, name, slug, description, price, stock, weight, is_active
+        "SELECT id, category_id, name, slug, description, price, original_price, stock, weight, is_active
          FROM products WHERE id = $1",
     )
     .bind(id)
@@ -433,15 +514,16 @@ pub async fn update_product(
     let product = sqlx::query_as::<_, ProductUpdateRow>(
         "UPDATE products
          SET category_id = $1, name = $2, slug = $3, description = $4,
-             price = $5, stock = $6, weight = $7, is_active = $8
-         WHERE id = $9
-         RETURNING id, name, slug, price, stock, is_active, updated_at",
+             price = $5, original_price = $6, stock = $7, weight = $8, is_active = $9
+         WHERE id = $10
+         RETURNING id, name, slug, price, original_price, stock, is_active, updated_at",
     )
     .bind(body.category_id.unwrap_or(existing.category_id))
     .bind(new_name)
     .bind(&new_slug)
     .bind(body.description.as_deref().or(existing.description.as_deref()))
     .bind(body.price.unwrap_or(existing.price))
+    .bind(body.original_price.or(existing.original_price))
     .bind(body.stock.unwrap_or(existing.stock))
     .bind(body.weight.or(existing.weight))
     .bind(body.is_active.unwrap_or(existing.is_active))
@@ -474,6 +556,7 @@ pub async fn update_product(
         "name": product.name,
         "slug": product.slug,
         "price": product.price,
+        "original_price": product.original_price,
         "stock": product.stock,
         "is_active": product.is_active,
         "updated_at": product.updated_at,
@@ -484,8 +567,6 @@ pub async fn delete_product(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<impl axum::response::IntoResponse> {
-    // Soft-delete: set is_active = false instead of hard delete
-    // Hard delete would fail with FK constraint if product has orders
     let result = sqlx::query(
         "UPDATE products SET is_active = FALSE WHERE id = $1",
     )

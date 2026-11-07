@@ -57,6 +57,7 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
       APP_NAME: ${APP_NAME:-Online Shop}
       UPLOAD_DIR: /app/uploads
+      WABRIDGE_URL: ${WABRIDGE_URL:-}
       # Email (opsional)
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}

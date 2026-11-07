@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { ShoppingCart, User, Search, Menu, X, LogOut } from "lucide-react";
+import { ShoppingCart, User, Search, Menu, X, LogOut, Heart } from "lucide-react";
 import { useState, useRef, useEffect, type FormEvent } from "react";
 import { useAuthStore } from "../../store/authStore";
 import { useCartStore } from "../../store/cartStore";
@@ -91,6 +91,15 @@ export default function Navbar() {
 
           {/* Right actions */}
           <div className="flex items-center gap-3">
+            {/* Wishlist */}
+            <Link
+              to="/wishlist"
+              className="p-2 text-gray-600 hover:text-red-500 transition-colors"
+              title="Wishlist Saya"
+            >
+              <Heart size={21} />
+            </Link>
+
             {/* Cart */}
             <Link
               to="/cart"
@@ -134,6 +143,13 @@ export default function Navbar() {
                       onClick={() => setUserMenuOpen(false)}
                     >
                       Pesanan Saya
+                    </Link>
+                    <Link
+                      to="/wishlist"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      Wishlist Saya
                     </Link>
                     <hr className="my-1" />
                     <button

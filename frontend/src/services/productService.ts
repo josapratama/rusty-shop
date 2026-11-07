@@ -16,6 +16,9 @@ export const productService = {
   getBySlug: (slug: string) =>
     api.get<ApiResponse<ProductDetail>>(`/products/${slug}`),
 
+  getRelated: (slug: string) =>
+    api.get<ApiResponse<ProductListItem[]>>(`/products/${slug}/related`),
+
   // Admin
   adminList: (params?: ProductQueryParams) =>
     api.get<PaginatedResponse<ProductListItem>>("/admin/products", { params }),

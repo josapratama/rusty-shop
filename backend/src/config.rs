@@ -17,6 +17,7 @@ pub struct AppConfig {
     pub smtp_password: Option<String>,
     pub email_from: String,
     pub app_name: String,
+    pub wabridge_url: Option<String>,
 }
 
 impl AppConfig {
@@ -66,6 +67,7 @@ impl AppConfig {
                 .unwrap_or_else(|_| "noreply@example.com".to_string()),
             app_name: std::env::var("APP_NAME")
                 .unwrap_or_else(|_| "Online Shop".to_string()),
+            wabridge_url: std::env::var("WABRIDGE_URL").ok().filter(|s| !s.is_empty()),
         })
     }
 }

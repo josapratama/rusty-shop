@@ -5,6 +5,7 @@ import {
   Tag,
   Users,
   ShoppingBag,
+  TicketPercent,
   BarChart2,
   LogOut,
   Menu,
@@ -27,6 +28,7 @@ const navItems: NavItem[] = [
   { to: "/admin/products", label: "Produk", icon: Package },
   { to: "/admin/users", label: "Pengguna", icon: Users },
   { to: "/admin/orders", label: "Pesanan", icon: ShoppingBag },
+  { to: "/admin/coupons", label: "Kupon Promo", icon: TicketPercent },
   { to: "/admin/reports", label: "Laporan", icon: BarChart2 },
 ];
 

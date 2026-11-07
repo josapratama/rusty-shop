@@ -177,25 +177,31 @@ EMAIL_FROM=noreply@domainanda.com
 
 - Register & login
 - Katalog produk dengan filter kategori, harga, pencarian, dan sorting
-- Detail produk
+- Detail produk dengan galeri gambar, rekomendasi produk terkait, dan ulasan pembeli
+- Harga promo / harga coret (*strike-through original price*) & badge diskon persentase
+- Ulasan & rating produk (bintang 1-5 + testimoni) untuk pesanan yang telah selesai
+- Wishlist / daftar produk favorit
 - Keranjang belanja (dengan indikator stok habis)
-- Checkout dengan kalkulasi ongkir berdasarkan berat
+- Checkout dengan kalkulasi ongkir berbasis berat dan validasi kupon promo
 - Pilih/tambah alamat pengiriman saat checkout
-- Riwayat pesanan & detail pesanan
+- Riwayat pesanan & detail pesanan lengkap
+- Informasi pelacakan paket (nama kurir ekspedisi & nomor resi) dengan tombol salin resi
+- Cetak Faktur / Invoice formal (print-friendly)
 - Cancel pesanan (hanya status pending)
 - Upload bukti pembayaran (bank transfer)
 - Ubah profil & ganti password
 
 ### Admin
 
-- Dashboard statistik
-- Manajemen produk (CRUD, soft-delete)
+- Dashboard statistik pendapatan dan status pesanan
+- Manajemen produk (CRUD, upload multi-gambar, harga promo / harga coret, soft-delete)
 - Manajemen kategori (CRUD)
-- Manajemen pesanan (lihat & ubah status)
+- Manajemen pesanan (lihat rincian pesanan, bukti transfer, ubah status, serta input kurir & no. resi)
+- Manajemen kupon promo (CRUD kode voucher, tipe persentase/tetap, minimum belanja, kuota pemakaian, dan masa berlaku)
 - Manajemen user (lihat & toggle aktif/nonaktif)
-- Laporan penjualan
+- Laporan penjualan dengan fitur **Ekspor ke CSV** (penjualan bulanan dan produk terlaris)
 
-### Keamanan
+### Keamanan & Performa
 
 - JWT dengan expiry yang bisa dikonfigurasi
 - JWT otomatis invalid setelah ganti password
@@ -204,11 +210,10 @@ EMAIL_FROM=noreply@domainanda.com
 - JWT disimpan di sessionStorage (bukan localStorage)
 - Checkout dengan database transaction + row-level lock (mencegah race condition stok)
 
-### Notifikasi Email (jika SMTP dikonfigurasi)
+### Notifikasi Real-time & Otomasi
 
-- Email selamat datang saat register
-- Konfirmasi pesanan setelah checkout
-- Update status pesanan (paid, processing, shipped, completed, cancelled)
+- **WhatsApp Notifikasi Otomatis (opsional):** Integrasi langsung dengan `wabridge` / `notify-bridge` untuk kirim notifikasi pembuatan pesanan dan nomor resi pengiriman via WhatsApp.
+- **Email SMTP (opsional):** Email selamat datang, konfirmasi pesanan, dan update status pengiriman.
 
 ---
 
@@ -221,8 +226,11 @@ POST   /api/v1/auth/register
 POST   /api/v1/auth/login
 GET    /api/v1/products           ?page, per_page, category, search, min_price, max_price, sort
 GET    /api/v1/products/:slug
+GET    /api/v1/products/:slug/related
+GET    /api/v1/products/:id/reviews
 GET    /api/v1/categories
 GET    /api/v1/categories/:slug
+POST   /api/v1/coupons/validate
 ```
 
 ### User (JWT required)
@@ -238,6 +246,12 @@ POST   /api/v1/cart/items
 PUT    /api/v1/cart/items/:id
 DELETE /api/v1/cart/items/:id
 DELETE /api/v1/cart
+
+GET    /api/v1/wishlist
+GET    /api/v1/wishlist/ids
+POST   /api/v1/wishlist/:id
+
+POST   /api/v1/reviews
 
 GET    /api/v1/addresses
 POST   /api/v1/addresses
@@ -258,6 +272,11 @@ POST   /api/v1/upload/payment-proof
 ```text
 GET    /api/v1/admin/dashboard
 GET    /api/v1/admin/reports
+
+GET    /api/v1/admin/coupons
+POST   /api/v1/admin/coupons
+PUT    /api/v1/admin/coupons/:id
+DELETE /api/v1/admin/coupons/:id
 
 GET    /api/v1/admin/users
 PATCH  /api/v1/admin/users/:id/toggle-status

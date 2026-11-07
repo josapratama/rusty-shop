@@ -7,3 +7,6 @@ pub mod order;
 pub mod user;
 pub mod admin;
 pub mod upload;
+pub mod coupon;
+pub mod review;
+pub mod wishlist;

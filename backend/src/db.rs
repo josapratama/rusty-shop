@@ -32,15 +32,19 @@ async fn run_migrations_if_needed(pool: &PgPool) -> anyhow::Result<()> {
         const INIT_SQL: &str = include_str!("../../database/migrations/001_init.sql");
         const SEED_SQL: &str = include_str!("../../database/migrations/002_seed.sql");
         const IMPR_SQL: &str = include_str!("../../database/migrations/003_improvements.sql");
+        const NEW_FEAT_SQL: &str = include_str!("../../database/migrations/004_new_features.sql");
 
         pool.execute(INIT_SQL).await?;
         pool.execute(SEED_SQL).await?;
         pool.execute(IMPR_SQL).await?;
+        pool.execute(NEW_FEAT_SQL).await?;
         tracing::info!("Database migrations and seed completed successfully!");
     } else {
         // Run incremental improvements if not applied
         const IMPR_SQL: &str = include_str!("../../database/migrations/003_improvements.sql");
         let _ = pool.execute(IMPR_SQL).await;
+        const NEW_FEAT_SQL: &str = include_str!("../../database/migrations/004_new_features.sql");
+        let _ = pool.execute(NEW_FEAT_SQL).await;
     }
 
     Ok(())

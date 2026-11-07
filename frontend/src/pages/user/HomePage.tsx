@@ -70,8 +70,37 @@ export default function HomePage() {
 
       {/* Featured Products */}
       <section className="max-w-7xl mx-auto px-4 pb-16">
+        {/* Promo Diskon Section (if any products have discount) */}
+        {productsData?.data?.some(
+          (p) => p.original_price && p.original_price > p.price
+        ) && (
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🔥</span>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Promo Diskon Spesial
+                </h2>
+              </div>
+              <Link
+                to="/catalog"
+                className="text-primary-600 text-sm font-medium hover:underline flex items-center gap-1"
+              >
+                Lihat semua promo <ArrowRight size={14} />
+              </Link>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              {productsData.data
+                .filter((p) => p.original_price && p.original_price > p.price)
+                .map((product) => (
+                  <ProductCard key={product.id} product={product} />
+                ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">Produk Terbaru</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Produk Pilihan</h2>
           <Link
             to="/catalog"
             className="text-primary-600 text-sm font-medium hover:underline flex items-center gap-1"

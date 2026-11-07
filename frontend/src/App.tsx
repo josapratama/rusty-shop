@@ -30,6 +30,7 @@ import RegisterPage from "./pages/user/RegisterPage";
 import ProfilePage from "./pages/user/ProfilePage";
 import OrderHistoryPage from "./pages/user/OrderHistoryPage";
 import OrderDetailPage from "./pages/user/OrderDetailPage";
+import WishlistPage from "./pages/user/WishlistPage";
 import AboutPage from "./pages/user/AboutPage";
 import ContactPage from "./pages/user/ContactPage";
 import FaqPage from "./pages/user/FaqPage";
@@ -42,6 +43,7 @@ import AdminCategories from "./pages/admin/CategoriesPage";
 import AdminProducts from "./pages/admin/ProductsPage";
 import AdminUsers from "./pages/admin/UsersPage";
 import AdminOrders from "./pages/admin/OrdersPage";
+import AdminCoupons from "./pages/admin/CouponsPage";
 import AdminReports from "./pages/admin/ReportsPage";
 import AdminLoginPage from "./pages/admin/LoginPage";
 
@@ -67,6 +69,7 @@ export default function App() {
           <Route path="products" element={<AdminProducts />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="orders" element={<AdminOrders />} />
+          <Route path="coupons" element={<AdminCoupons />} />
           <Route path="reports" element={<AdminReports />} />
         </Route>
 
@@ -123,6 +126,14 @@ export default function App() {
             element={
               <PrivateRoute>
                 <OrderDetailPage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="wishlist"
+            element={
+              <PrivateRoute>
+                <WishlistPage />
               </PrivateRoute>
             }
           />

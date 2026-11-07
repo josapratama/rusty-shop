@@ -15,6 +15,7 @@ pub struct CreateProductRequest {
     // Tidak pakai #[validate(range)] karena Decimal tidak support ValidateRange
     // Validasi manual di handler
     pub price: Decimal,
+    pub original_price: Option<Decimal>,
 
     pub stock: i32,
 
@@ -32,6 +33,7 @@ pub struct UpdateProductRequest {
 
     pub description: Option<String>,
     pub price: Option<Decimal>,
+    pub original_price: Option<Decimal>,
     pub stock: Option<i32>,
     pub weight: Option<Decimal>,
     pub is_active: Option<bool>,

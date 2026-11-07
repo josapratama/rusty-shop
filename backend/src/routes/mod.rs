@@ -14,7 +14,7 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
     config::AppState,
-    handlers::{admin, auth, cart, address, category, order, product, upload, user},
+    handlers::{admin, auth, cart, address, category, order, product, upload, user, coupon, review, wishlist},
     middleware::auth::{require_admin, require_auth},
 };
 
@@ -52,7 +52,6 @@ pub fn create_router(state: AppState) -> Router {
 
 fn public_routes() -> Router<AppState> {
     // Rate limit auth endpoints: 30 requests per minute globally
-    // burst_size=10, per_second=2 → replenish 1 token every 2s = 30 req/min
     let auth_rate_limit = Arc::new(
         GovernorConfigBuilder::default()
             .key_extractor(GlobalKeyExtractor)
@@ -73,9 +72,13 @@ fn public_routes() -> Router<AppState> {
         // Products (public)
         .route("/products", get(product::list_products))
         .route("/products/:slug", get(product::get_product))
+        .route("/products/:slug/related", get(product::get_related_products))
+        .route("/products/:id/reviews", get(review::list_product_reviews))
         // Categories (public)
         .route("/categories", get(category::list_categories))
         .route("/categories/:slug", get(category::get_category))
+        // Coupons (validation)
+        .route("/coupons/validate", post(coupon::validate_coupon))
 }
 
 fn user_routes(state: AppState) -> Router<AppState> {
@@ -105,6 +108,12 @@ fn user_routes(state: AppState) -> Router<AppState> {
         .route("/orders/:id/payment-proof", post(upload::set_order_payment_proof))
         // Upload
         .route("/upload/payment-proof", post(upload::upload_payment_proof))
+        // Reviews
+        .route("/reviews", post(review::create_review))
+        // Wishlist
+        .route("/wishlist", get(wishlist::list_wishlist))
+        .route("/wishlist/ids", get(wishlist::get_wishlist_ids))
+        .route("/wishlist/:id", post(wishlist::toggle_wishlist))
         .layer(middleware::from_fn_with_state(state, require_auth))
 }
 
@@ -131,6 +140,11 @@ fn admin_routes(state: AppState) -> Router<AppState> {
         .route("/admin/orders", get(order::admin_list_orders))
         .route("/admin/orders/:id", get(order::admin_get_order))
         .route("/admin/orders/:id/status", patch(order::admin_update_order_status))
+        // Coupons
+        .route("/admin/coupons", get(coupon::admin_list_coupons))
+        .route("/admin/coupons", post(coupon::admin_create_coupon))
+        .route("/admin/coupons/:id", put(coupon::admin_update_coupon))
+        .route("/admin/coupons/:id", delete(coupon::admin_delete_coupon))
         .layer(middleware::from_fn(require_admin))
         .layer(middleware::from_fn_with_state(state, require_auth))
 }

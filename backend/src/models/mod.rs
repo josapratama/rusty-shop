@@ -4,3 +4,5 @@ pub mod product;
 pub mod cart;
 pub mod address;
 pub mod order;
+pub mod coupon;
+pub mod review;

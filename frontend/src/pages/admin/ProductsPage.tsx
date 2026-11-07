@@ -19,6 +19,7 @@ interface ProductForm {
   name: string;
   description: string;
   price: string;
+  original_price: string;
   stock: string;
   weight: string;
   is_active: boolean;
@@ -30,6 +31,7 @@ const emptyForm: ProductForm = {
   name: "",
   description: "",
   price: "",
+  original_price: "",
   stock: "",
   weight: "",
   is_active: true,
@@ -74,6 +76,7 @@ export default function ProductsPage() {
         name: p.name,
         description: p.description ?? "",
         price: String(p.price),
+        original_price: p.original_price ? String(p.original_price) : "",
         stock: String(p.stock),
         weight: p.weight ? String(p.weight) : "",
         is_active: p.is_active,
@@ -100,6 +103,7 @@ export default function ProductsPage() {
       name: form.name,
       description: form.description || undefined,
       price: parseFloat(form.price),
+      original_price: form.original_price ? parseFloat(form.original_price) : undefined,
       stock: parseInt(form.stock),
       weight: form.weight ? parseFloat(form.weight) : undefined,
       is_active: form.is_active,
@@ -326,10 +330,10 @@ export default function ProductsPage() {
                   className="input-field"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Harga *
+                    Harga Jual (Rp) *
                   </label>
                   <input
                     required
@@ -342,6 +346,23 @@ export default function ProductsPage() {
                     className="input-field"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Harga Coret / Asli (Opsional)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="Contoh: 150000"
+                    value={form.original_price}
+                    onChange={(e) =>
+                      setForm({ ...form, original_price: e.target.value })
+                    }
+                    className="input-field"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Stok *

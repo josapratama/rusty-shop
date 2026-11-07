@@ -59,6 +59,9 @@ struct OrderListRow {
     subtotal: Decimal,
     shipping_cost: Decimal,
     total: Decimal,
+    discount_amount: Option<Decimal>,
+    courier: Option<String>,
+    tracking_number: Option<String>,
     created_at: DateTime<Utc>,
 }
 
@@ -72,6 +75,10 @@ struct OrderDetailRow {
     subtotal: Decimal,
     shipping_cost: Decimal,
     total: Decimal,
+    discount_amount: Option<Decimal>,
+    coupon_code: Option<String>,
+    courier: Option<String>,
+    tracking_number: Option<String>,
     shipping_name: String,
     shipping_phone: String,
     shipping_address: String,
@@ -101,6 +108,8 @@ struct AdminOrderListRow {
     status: OrderStatus,
     payment_method: PaymentMethod,
     total: Decimal,
+    courier: Option<String>,
+    tracking_number: Option<String>,
     created_at: DateTime<Utc>,
     user_name: String,
     user_email: String,
@@ -116,6 +125,10 @@ struct AdminOrderDetailRow {
     subtotal: Decimal,
     shipping_cost: Decimal,
     total: Decimal,
+    discount_amount: Option<Decimal>,
+    coupon_code: Option<String>,
+    courier: Option<String>,
+    tracking_number: Option<String>,
     shipping_name: String,
     shipping_phone: String,
     shipping_address: String,
@@ -130,26 +143,16 @@ struct AdminOrderDetailRow {
     user_phone: Option<String>,
 }
 
-#[derive(sqlx::FromRow)]
-struct OrderStatusUpdateRow {
-    id: Uuid,
-    order_number: String,
-    status: OrderStatus,
-    updated_at: DateTime<Utc>,
-}
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// ── Helper ────────────────────────────────────────────────────────────────────
-
-/// Generate a unique order number using UUID prefix for collision-safety.
 fn generate_order_number() -> String {
-    let id = Uuid::new_v4();
-    let short = &id.to_string().replace('-', "")[..8].to_uppercase();
-    format!("ORD-{short}")
+    let now = Utc::now().format("%Y%m%d%H%M%S");
+    let rand_num: u32 = rand::random::<u32>() % 9000 + 1000;
+    format!("ORD-{now}-{rand_num}")
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
-/// Checkout with full transaction + SELECT FOR UPDATE to prevent race conditions.
 pub async fn checkout(
     State(state): State<AppState>,
     axum::Extension(claims): axum::Extension<Claims>,
@@ -162,23 +165,25 @@ pub async fn checkout(
         .parse()
         .map_err(|_| AppError::Unauthorized("Invalid token".to_string()))?;
 
-    let mut tx = state.pool.begin().await?;
-
-    // Fetch address
+    // Verify address belongs to user
     let address = sqlx::query_as::<_, AddressRow>(
         "SELECT recipient_name, phone, address_line, city, province, postal_code
          FROM addresses WHERE id = $1 AND user_id = $2",
     )
     .bind(body.address_id)
     .bind(user_id)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&state.pool)
     .await?
     .ok_or_else(|| AppError::NotFound("Address not found".to_string()))?;
 
-    // Fetch cart items with FOR UPDATE lock on products to prevent race condition
+    // Begin transaction
+    let mut tx = state.pool.begin().await?;
+
+    // Get cart items with row-level lock on products to prevent race conditions
     let cart_items = sqlx::query_as::<_, CartItemRow>(
         r#"SELECT ci.id, ci.product_id, ci.quantity,
-                  p.name, p.price, p.stock, p.is_active, p.weight,
+                  p.name, p.price, p.stock, p.is_active,
+                  p.weight,
                   (SELECT image_url FROM product_images
                    WHERE product_id = p.id AND is_primary = TRUE LIMIT 1) AS image_url
            FROM cart_items ci
@@ -195,7 +200,7 @@ pub async fn checkout(
         return Err(AppError::BadRequest("Cart is empty".to_string()));
     }
 
-    // Validate stock inside transaction (after lock)
+    // Validate stock inside transaction
     for item in &cart_items {
         if !item.is_active {
             return Err(AppError::BadRequest(format!(
@@ -216,8 +221,7 @@ pub async fn checkout(
         .map(|i| i.price * Decimal::from(i.quantity))
         .sum();
 
-    // #14: Calculate shipping cost based on total weight (grams)
-    // Rate is fetched from shop_config table
+    // Calculate shipping cost based on total weight (grams)
     let rate: Decimal = sqlx::query_scalar::<_, Option<String>>(
         "SELECT value FROM shop_config WHERE key = 'shipping_cost_per_gram'",
     )
@@ -232,11 +236,77 @@ pub async fn checkout(
         .map(|i| i.weight.unwrap_or(Decimal::ZERO) * Decimal::from(i.quantity))
         .sum();
 
-    let shipping_cost = (rate * total_weight_grams)
-        .round_dp(0); // round to nearest rupiah
-    let total = subtotal + shipping_cost;
+    let shipping_cost = (rate * total_weight_grams).round_dp(0);
+
+    // Coupon discount calculation
+    let mut discount_amount = Decimal::ZERO;
+    let mut coupon_id_val: Option<Uuid> = None;
+    let mut coupon_code_val: Option<String> = None;
+
+    if let Some(ref code) = body.coupon_code {
+        let code_clean = code.trim().to_uppercase();
+        if !code_clean.is_empty() {
+            #[allow(dead_code)]
+            #[derive(sqlx::FromRow)]
+            struct CouponLockRow {
+                id: Uuid,
+                code: String,
+                discount_type: String,
+                discount_value: Decimal,
+                min_purchase: Decimal,
+                max_discount: Option<Decimal>,
+                usage_limit: Option<i32>,
+                used_count: i32,
+                is_active: bool,
+                expires_at: Option<DateTime<Utc>>,
+            }
+
+            let coupon = sqlx::query_as::<_, CouponLockRow>(
+                "SELECT id, code, discount_type, discount_value, min_purchase, max_discount,
+                        usage_limit, used_count, is_active, expires_at
+                 FROM coupons
+                 WHERE UPPER(code) = UPPER($1) AND is_active = TRUE
+                 FOR UPDATE",
+            )
+            .bind(&code_clean)
+            .fetch_optional(&mut *tx)
+            .await?;
+
+            if let Some(c) = coupon {
+                let valid_expiry = c.expires_at.map_or(true, |exp| exp >= Utc::now());
+                let valid_usage = c.usage_limit.map_or(true, |lim| c.used_count < lim);
+                let valid_min = subtotal >= c.min_purchase;
+
+                if valid_expiry && valid_usage && valid_min {
+                    let mut disc = match c.discount_type.as_str() {
+                        "percentage" => (subtotal * c.discount_value / Decimal::from(100)).round_dp(0),
+                        "fixed" => c.discount_value,
+                        _ => Decimal::ZERO,
+                    };
+                    if let Some(max) = c.max_discount {
+                        if disc > max {
+                            disc = max;
+                        }
+                    }
+                    if disc > subtotal {
+                        disc = subtotal;
+                    }
+
+                    discount_amount = disc;
+                    coupon_id_val = Some(c.id);
+                    coupon_code_val = Some(c.code);
+
+                    sqlx::query("UPDATE coupons SET used_count = used_count + 1 WHERE id = $1")
+                        .bind(c.id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+            }
+        }
+    }
+
+    let total = (subtotal - discount_amount).max(Decimal::ZERO) + shipping_cost;
     let order_number = generate_order_number();
-    // Save payment method string before it's moved into the bind
     let payment_method_str = body.payment_method.to_string();
 
     // Insert order
@@ -244,10 +314,11 @@ pub async fn checkout(
         "INSERT INTO orders (
              user_id, order_number, status, payment_method,
              subtotal, shipping_cost, total,
+             discount_amount, coupon_id, coupon_code,
              shipping_name, shipping_phone, shipping_address,
              shipping_city, shipping_province, shipping_postal, notes
          )
-         VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
          RETURNING id, order_number, status, created_at",
     )
     .bind(user_id)
@@ -256,6 +327,9 @@ pub async fn checkout(
     .bind(subtotal)
     .bind(shipping_cost)
     .bind(total)
+    .bind(discount_amount)
+    .bind(coupon_id_val)
+    .bind(coupon_code_val)
     .bind(&address.recipient_name)
     .bind(&address.phone)
     .bind(&address.address_line)
@@ -266,7 +340,7 @@ pub async fn checkout(
     .fetch_one(&mut *tx)
     .await?;
 
-    // Insert order items & decrement stock (inside same transaction)
+    // Insert order items & decrement stock
     for item in &cart_items {
         sqlx::query(
             "INSERT INTO order_items
@@ -324,6 +398,17 @@ pub async fn checkout(
         }
     }
 
+    // Send WhatsApp notification (non-blocking)
+    let wa_msg = format!(
+        "Halo {}, pesanan Anda #{}\ntelah berhasil dibuat!\nTotal: Rp {}\nSilakan periksa detail pesanan Anda di website {}.",
+        address.recipient_name, order.order_number, total, state.config.app_name
+    );
+    crate::utils::whatsapp::send_whatsapp_async(
+        state.config.wabridge_url.clone(),
+        address.phone.clone(),
+        wa_msg,
+    );
+
     Ok(response::created(serde_json::json!({
         "id": order.id,
         "order_number": order.order_number,
@@ -346,47 +431,50 @@ pub async fn list_my_orders(
     let page = params.page.unwrap_or(1).max(1);
     let per_page = params.per_page.unwrap_or(10).min(50);
     let offset = (page - 1) * per_page;
-    let status_filter = params.status.as_ref().map(|s| s.to_string());
 
     let orders = sqlx::query_as::<_, OrderListRow>(
         "SELECT id, order_number, status, payment_method,
-                subtotal, shipping_cost, total, created_at
+                subtotal, shipping_cost, total, discount_amount, courier, tracking_number, created_at
          FROM orders
          WHERE user_id = $1
-           AND ($2::text IS NULL OR status::text = $2)
+           AND ($2::order_status IS NULL OR status = $2)
          ORDER BY created_at DESC
          LIMIT $3 OFFSET $4",
     )
     .bind(user_id)
-    .bind(&status_filter)
+    .bind(params.status.as_ref() as Option<&OrderStatus>)
     .bind(per_page)
     .bind(offset)
     .fetch_all(&state.pool)
     .await?;
 
-    // Fix: count query also applies status filter
     let total = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM orders
          WHERE user_id = $1
-           AND ($2::text IS NULL OR status::text = $2)",
+           AND ($2::order_status IS NULL OR status = $2)",
     )
     .bind(user_id)
-    .bind(&status_filter)
+    .bind(params.status.as_ref() as Option<&OrderStatus>)
     .fetch_one(&state.pool)
     .await?;
 
     let data: Vec<_> = orders
         .iter()
-        .map(|o| serde_json::json!({
-            "id": o.id,
-            "order_number": o.order_number,
-            "status": o.status,
-            "payment_method": o.payment_method,
-            "subtotal": o.subtotal,
-            "shipping_cost": o.shipping_cost,
-            "total": o.total,
-            "created_at": o.created_at,
-        }))
+        .map(|o| {
+            serde_json::json!({
+                "id": o.id,
+                "order_number": o.order_number,
+                "status": o.status,
+                "payment_method": o.payment_method,
+                "subtotal": o.subtotal,
+                "shipping_cost": o.shipping_cost,
+                "discount_amount": o.discount_amount.unwrap_or(Decimal::ZERO),
+                "total": o.total,
+                "courier": o.courier,
+                "tracking_number": o.tracking_number,
+                "created_at": o.created_at,
+            })
+        })
         .collect();
 
     Ok(response::paginated(data, PaginationMeta::new(page, per_page, total)))
@@ -404,11 +492,12 @@ pub async fn get_my_order(
 
     let order = sqlx::query_as::<_, OrderDetailRow>(
         "SELECT id, order_number, status, payment_method, payment_proof,
-                subtotal, shipping_cost, total,
+                subtotal, shipping_cost, total, discount_amount, coupon_code, courier, tracking_number,
                 shipping_name, shipping_phone, shipping_address,
                 shipping_city, shipping_province, shipping_postal,
                 notes, created_at, updated_at
-         FROM orders WHERE id = $1 AND user_id = $2",
+         FROM orders
+         WHERE id = $1 AND user_id = $2",
     )
     .bind(id)
     .bind(user_id)
@@ -432,6 +521,10 @@ pub async fn get_my_order(
         "payment_proof": order.payment_proof,
         "subtotal": order.subtotal,
         "shipping_cost": order.shipping_cost,
+        "discount_amount": order.discount_amount.unwrap_or(Decimal::ZERO),
+        "coupon_code": order.coupon_code,
+        "courier": order.courier,
+        "tracking_number": order.tracking_number,
         "total": order.total,
         "shipping_name": order.shipping_name,
         "shipping_phone": order.shipping_phone,
@@ -446,7 +539,6 @@ pub async fn get_my_order(
     })))
 }
 
-/// Cancel order — only allowed for pending orders by the owner
 pub async fn cancel_order(
     State(state): State<AppState>,
     axum::Extension(claims): axum::Extension<Claims>,
@@ -457,48 +549,60 @@ pub async fn cancel_order(
         .parse()
         .map_err(|_| AppError::Unauthorized("Invalid token".to_string()))?;
 
-    let order = sqlx::query_as::<_, OrderStatusUpdateRow>(
-        "UPDATE orders SET status = 'cancelled'
-         WHERE id = $1 AND user_id = $2 AND status = 'pending'
-         RETURNING id, order_number, status, updated_at",
+    #[allow(dead_code)]
+    #[derive(sqlx::FromRow)]
+    struct OrderCancelCheck {
+        id: Uuid,
+        status: OrderStatus,
+    }
+
+    let order = sqlx::query_as::<_, OrderCancelCheck>(
+        "SELECT id, status FROM orders WHERE id = $1 AND user_id = $2",
     )
     .bind(id)
     .bind(user_id)
     .fetch_optional(&state.pool)
     .await?
-    .ok_or_else(|| AppError::BadRequest(
-        "Order not found or cannot be cancelled (only pending orders can be cancelled)".to_string(),
-    ))?;
+    .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
 
-    // Send cancellation email (non-blocking)
-    {
-        #[derive(sqlx::FromRow)]
-        struct UserEmailRow { name: String, email: String }
-        if let Ok(Some(u)) = sqlx::query_as::<_, UserEmailRow>(
-            "SELECT name, email FROM users WHERE id = $1",
-        )
-        .bind(user_id)
-        .fetch_optional(&state.pool)
-        .await
-        {
-            crate::utils::email::send_order_status_updated(
-                &state.config,
-                &u.email,
-                &u.name,
-                &order.order_number,
-                "cancelled",
-                &state.config.frontend_url,
-                &order.id.to_string(),
-            );
-        }
+    if order.status != OrderStatus::Pending {
+        return Err(AppError::BadRequest(
+            "Only pending orders can be cancelled".to_string(),
+        ));
     }
 
-    Ok(response::success(serde_json::json!({
-        "id": order.id,
-        "order_number": order.order_number,
-        "status": order.status,
-        "updated_at": order.updated_at,
-    })))
+    let mut tx = state.pool.begin().await?;
+
+    sqlx::query("UPDATE orders SET status = 'cancelled' WHERE id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+
+    // Restore stock
+    #[derive(sqlx::FromRow)]
+    struct RestockRow {
+        product_id: Uuid,
+        quantity: i32,
+    }
+
+    let items = sqlx::query_as::<_, RestockRow>(
+        "SELECT product_id, quantity FROM order_items WHERE order_id = $1",
+    )
+    .bind(id)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    for item in items {
+        sqlx::query("UPDATE products SET stock = stock + $1 WHERE id = $2")
+            .bind(item.quantity)
+            .bind(item.product_id)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    tx.commit().await?;
+
+    Ok(response::message("Order cancelled successfully"))
 }
 
 // ── Admin handlers ────────────────────────────────────────────────────────────
@@ -510,45 +614,46 @@ pub async fn admin_list_orders(
     let page = params.page.unwrap_or(1).max(1);
     let per_page = params.per_page.unwrap_or(20).min(100);
     let offset = (page - 1) * per_page;
-    let status_filter = params.status.as_ref().map(|s| s.to_string());
 
     let orders = sqlx::query_as::<_, AdminOrderListRow>(
-        "SELECT o.id, o.order_number, o.status, o.payment_method,
-                o.total, o.created_at,
+        "SELECT o.id, o.order_number, o.status, o.payment_method, o.total,
+                o.courier, o.tracking_number, o.created_at,
                 u.name AS user_name, u.email AS user_email
          FROM orders o
          JOIN users u ON u.id = o.user_id
-         WHERE ($1::text IS NULL OR o.status::text = $1)
+         WHERE ($1::order_status IS NULL OR o.status = $1)
          ORDER BY o.created_at DESC
          LIMIT $2 OFFSET $3",
     )
-    .bind(&status_filter)
+    .bind(params.status.as_ref() as Option<&OrderStatus>)
     .bind(per_page)
     .bind(offset)
     .fetch_all(&state.pool)
     .await?;
 
-    // Fix: count query also applies status filter
     let total = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM orders
-         WHERE ($1::text IS NULL OR status::text = $1)",
+        "SELECT COUNT(*) FROM orders WHERE ($1::order_status IS NULL OR status = $1)",
     )
-    .bind(&status_filter)
+    .bind(params.status.as_ref() as Option<&OrderStatus>)
     .fetch_one(&state.pool)
     .await?;
 
     let data: Vec<_> = orders
         .iter()
-        .map(|o| serde_json::json!({
-            "id": o.id,
-            "order_number": o.order_number,
-            "status": o.status,
-            "payment_method": o.payment_method,
-            "total": o.total,
-            "user_name": o.user_name,
-            "user_email": o.user_email,
-            "created_at": o.created_at,
-        }))
+        .map(|o| {
+            serde_json::json!({
+                "id": o.id,
+                "order_number": o.order_number,
+                "status": o.status,
+                "payment_method": o.payment_method,
+                "total": o.total,
+                "courier": o.courier,
+                "tracking_number": o.tracking_number,
+                "created_at": o.created_at,
+                "user_name": o.user_name,
+                "user_email": o.user_email,
+            })
+        })
         .collect();
 
     Ok(response::paginated(data, PaginationMeta::new(page, per_page, total)))
@@ -560,7 +665,8 @@ pub async fn admin_get_order(
 ) -> AppResult<impl axum::response::IntoResponse> {
     let order = sqlx::query_as::<_, AdminOrderDetailRow>(
         "SELECT o.id, o.order_number, o.status, o.payment_method, o.payment_proof,
-                o.subtotal, o.shipping_cost, o.total,
+                o.subtotal, o.shipping_cost, o.total, o.discount_amount, o.coupon_code,
+                o.courier, o.tracking_number,
                 o.shipping_name, o.shipping_phone, o.shipping_address,
                 o.shipping_city, o.shipping_province, o.shipping_postal,
                 o.notes, o.created_at, o.updated_at,
@@ -590,6 +696,10 @@ pub async fn admin_get_order(
         "payment_proof": order.payment_proof,
         "subtotal": order.subtotal,
         "shipping_cost": order.shipping_cost,
+        "discount_amount": order.discount_amount.unwrap_or(Decimal::ZERO),
+        "coupon_code": order.coupon_code,
+        "courier": order.courier,
+        "tracking_number": order.tracking_number,
         "total": order.total,
         "shipping_name": order.shipping_name,
         "shipping_phone": order.shipping_phone,
@@ -617,20 +727,28 @@ pub async fn admin_update_order_status(
         id: Uuid,
         order_number: String,
         status: OrderStatus,
+        courier: Option<String>,
+        tracking_number: Option<String>,
+        shipping_phone: String,
         updated_at: DateTime<Utc>,
         user_name: String,
         user_email: String,
     }
 
     let order = sqlx::query_as::<_, OrderWithUserRow>(
-        "UPDATE orders SET status = $1
+        "UPDATE orders
+         SET status = $1,
+             courier = COALESCE($3, courier),
+             tracking_number = COALESCE($4, tracking_number)
          WHERE id = $2
-         RETURNING id, order_number, status, updated_at,
+         RETURNING id, order_number, status, courier, tracking_number, shipping_phone, updated_at,
            (SELECT name FROM users WHERE id = orders.user_id) AS user_name,
            (SELECT email FROM users WHERE id = orders.user_id) AS user_email",
     )
     .bind(body.status as OrderStatus)
     .bind(id)
+    .bind(&body.courier)
+    .bind(&body.tracking_number)
     .fetch_optional(&state.pool)
     .await?
     .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
@@ -646,10 +764,27 @@ pub async fn admin_update_order_status(
         &order.id.to_string(),
     );
 
+    // Send WhatsApp notification if status changed to shipped
+    if order.status == OrderStatus::Shipped {
+        let courier_str = order.courier.as_deref().unwrap_or("Kurir Pengiriman");
+        let tracking_str = order.tracking_number.as_deref().unwrap_or("-");
+        let wa_msg = format!(
+            "Pesanan Anda #{} telah dikirim!\nKurir: {}\nNo. Resi: {}\nLacak pesanan Anda di website {}.",
+            order.order_number, courier_str, tracking_str, state.config.app_name
+        );
+        crate::utils::whatsapp::send_whatsapp_async(
+            state.config.wabridge_url.clone(),
+            order.shipping_phone.clone(),
+            wa_msg,
+        );
+    }
+
     Ok(response::success(serde_json::json!({
         "id": order.id,
         "order_number": order.order_number,
         "status": order.status,
+        "courier": order.courier,
+        "tracking_number": order.tracking_number,
         "updated_at": order.updated_at,
     })))
 }
