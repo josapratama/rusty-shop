@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, useRef, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { productService } from "../../services/productService";
 import { categoryService } from "../../services/categoryService";
@@ -11,7 +11,7 @@ import type {
   ProductImageInput,
   ProductListItem,
 } from "../../types";
-import { Plus, Pencil, Trash2, X, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Search, Upload, Image as ImageIcon, Star } from "lucide-react";
 import toast from "react-hot-toast";
 
 interface ProductForm {
@@ -45,7 +45,65 @@ export default function ProductsPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [uploadingImg, setUploadingImg] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploadingImg(true);
+    try {
+      for (const file of Array.from(files)) {
+        const res = await productService.uploadImage(file);
+        const url = res.data.data.url;
+        setForm((prev) => {
+          const validImgs = prev.images.filter((i) => i.image_url.trim() !== "");
+          return {
+            ...prev,
+            images: [
+              ...validImgs,
+              {
+                image_url: url,
+                is_primary: validImgs.length === 0,
+                sort_order: validImgs.length,
+              },
+            ],
+          };
+        });
+      }
+      toast.success("Foto produk berhasil diunggah!");
+    } catch {
+      toast.error("Gagal mengunggah foto produk");
+    } finally {
+      setUploadingImg(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const setPrimaryImage = (idx: number) => {
+    setForm((prev) => ({
+      ...prev,
+      images: prev.images.map((img, i) => ({
+        ...img,
+        is_primary: i === idx,
+      })),
+    }));
+  };
+
+  const removeImage = (idx: number) => {
+    setForm((prev) => {
+      const filtered = prev.images.filter((_, i) => i !== idx);
+      // Ensure at least one primary image remains if array not empty
+      if (filtered.length > 0 && !filtered.some((img) => img.is_primary)) {
+        filtered[0].is_primary = true;
+      }
+      return {
+        ...prev,
+        images: filtered.length > 0 ? filtered : [{ image_url: "", is_primary: true, sort_order: 0 }],
+      };
+    });
+  };
 
   const { data, isLoading } = useQuery<PaginatedResponse<ProductListItem>>({
     queryKey: ["admin-products", { page, search }],
@@ -394,37 +452,119 @@ export default function ProductsPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  URL Gambar
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Foto Produk
                 </label>
+
+                {/* Upload Action Button */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+
+                <div className="flex gap-2 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingImg}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg text-xs font-semibold hover:bg-primary-100 transition-colors"
+                  >
+                    <Upload size={14} />
+                    {uploadingImg ? "Mengunggah..." : "Upload Foto (File)"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        images: [
+                          ...form.images,
+                          {
+                            image_url: "",
+                            is_primary: form.images.length === 0,
+                            sort_order: form.images.length,
+                          },
+                        ],
+                      })
+                    }
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 text-gray-700 border border-gray-200 rounded-lg text-xs font-semibold hover:bg-gray-100 transition-colors"
+                  >
+                    <Plus size={14} /> Tambah Input URL
+                  </button>
+                </div>
+
+                {/* Preview Thumbnail Grid */}
+                {form.images.some((i) => i.image_url.trim() !== "") && (
+                  <div className="grid grid-cols-3 gap-2 mb-3 p-2 bg-gray-50 rounded-lg border">
+                    {form.images.map((img, idx) => {
+                      if (!img.image_url.trim()) return null;
+                      return (
+                        <div
+                          key={idx}
+                          className={`relative group rounded-lg overflow-hidden border-2 bg-white aspect-square ${
+                            img.is_primary ? "border-primary-500 shadow-sm" : "border-gray-200"
+                          }`}
+                        >
+                          <img
+                            src={img.image_url}
+                            alt="preview"
+                            className="w-full h-full object-cover"
+                          />
+                          {img.is_primary && (
+                            <span className="absolute top-1 left-1 bg-primary-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
+                              Utama
+                            </span>
+                          )}
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                            {!img.is_primary && (
+                              <button
+                                type="button"
+                                onClick={() => setPrimaryImage(idx)}
+                                title="Jadikan foto utama"
+                                className="p-1 bg-white text-gray-800 rounded hover:bg-primary-50 hover:text-primary-600 shadow"
+                              >
+                                <Star size={12} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeImage(idx)}
+                              title="Hapus foto"
+                              className="p-1 bg-white text-red-600 rounded hover:bg-red-50 shadow"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* URL inputs */}
                 {form.images.map((img, idx) => (
-                  <input
-                    key={idx}
-                    value={img.image_url}
-                    onChange={(e) => updateImage(idx, e.target.value)}
-                    className="input-field mb-2"
-                    placeholder="https://..."
-                  />
+                  <div key={idx} className="flex items-center gap-2 mb-1.5">
+                    <input
+                      value={img.image_url}
+                      onChange={(e) => updateImage(idx, e.target.value)}
+                      className="input-field text-xs py-1.5 flex-1"
+                      placeholder="https://... atau upload di atas"
+                    />
+                    {form.images.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeImage(idx)}
+                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
                 ))}
-                <button
-                  type="button"
-                  onClick={() =>
-                    setForm({
-                      ...form,
-                      images: [
-                        ...form.images,
-                        {
-                          image_url: "",
-                          is_primary: false,
-                          sort_order: form.images.length,
-                        },
-                      ],
-                    })
-                  }
-                  className="text-sm text-primary-600 hover:underline"
-                >
-                  + Tambah gambar
-                </button>
               </div>
               <div className="flex items-center gap-2">
                 <input

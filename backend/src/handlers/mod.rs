@@ -10,3 +10,4 @@ pub mod upload;
 pub mod coupon;
 pub mod review;
 pub mod wishlist;
+pub mod config;

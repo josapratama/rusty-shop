@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { orderService } from "../../services/orderService";
 import { reviewService } from "../../services/reviewService";
+import { configService, type BankAccount } from "../../services/configService";
 import { formatCurrency, formatDateTime } from "../../utils/format";
 import StatusBadge from "../../components/ui/StatusBadge";
 import LoadingSpinner from "../../components/ui/LoadingSpinner";
@@ -29,6 +30,22 @@ export default function OrderDetailPage() {
     queryFn: () => orderService.get(id!).then((r) => r.data.data),
     enabled: !!id,
   });
+
+  const { data: config } = useQuery({
+    queryKey: ["config"],
+    queryFn: () => configService.get().then((r) => r.data.data),
+  });
+
+  let bankAccounts: BankAccount[] = [
+    { bank: "BCA", account_number: "1234567890", holder_name: "Rusty Shop" },
+    { bank: "Mandiri", account_number: "9876543210", holder_name: "Rusty Shop" },
+  ];
+  if (config?.bank_accounts) {
+    try {
+      const parsed = JSON.parse(config.bank_accounts);
+      if (Array.isArray(parsed) && parsed.length > 0) bankAccounts = parsed;
+    } catch {}
+  }
 
   const handleCancel = async () => {
     if (!id || !window.confirm("Yakin ingin membatalkan pesanan ini?")) return;
@@ -284,10 +301,13 @@ export default function OrderDetailPage() {
           {order.payment_method === "bank_transfer" && order.status === "pending" && (
             <div className="mt-3 p-4 bg-yellow-50 rounded-lg text-sm text-yellow-800 border border-yellow-200">
               <p className="font-bold">Instruksi Pembayaran Transfer Bank:</p>
-              <div className="mt-2 space-y-1">
-                <p>Bank BCA: <strong>1234567890</strong> a/n Online Shop</p>
-                <p>Bank Mandiri: <strong>9876543210</strong> a/n Online Shop</p>
-                <p className="mt-1">
+              <div className="mt-2 space-y-1.5">
+                {bankAccounts.map((acc, idx) => (
+                  <p key={idx}>
+                    Bank {acc.bank}: <strong>{acc.account_number}</strong> a/n {acc.holder_name}
+                  </p>
+                ))}
+                <p className="mt-2 pt-1 border-t border-yellow-200">
                   Nominal Transfer: <strong className="text-primary-700 text-base">{formatCurrency(order.total)}</strong>
                 </p>
               </div>

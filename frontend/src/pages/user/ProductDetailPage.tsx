@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { productService } from "../../services/productService";
@@ -44,6 +44,18 @@ export default function ProductDetailPage() {
     enabled: !!slug,
   });
 
+  const { data: wishlistIds } = useQuery<string[]>({
+    queryKey: ["wishlist-ids"],
+    queryFn: () => wishlistService.getIds().then((r) => r.data.data),
+    enabled: !!token,
+  });
+
+  useEffect(() => {
+    if (product && wishlistIds) {
+      setIsWishlisted(wishlistIds.includes(product.id));
+    }
+  }, [product, wishlistIds]);
+
   const handleAddToCart = async () => {
     if (!token) {
       toast.error("Silakan login terlebih dahulu");
@@ -79,6 +91,7 @@ export default function ProductDetailPage() {
       setIsWishlisted(newState);
       toast.success(newState ? "Ditambahkan ke Wishlist" : "Dihapus dari Wishlist");
       void queryClient.invalidateQueries({ queryKey: ["wishlist"] });
+      void queryClient.invalidateQueries({ queryKey: ["wishlist-ids"] });
     } catch {
       toast.error("Gagal memperbarui wishlist");
     } finally {

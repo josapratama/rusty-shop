@@ -129,3 +129,65 @@ pub async fn set_order_payment_proof(
 pub struct SetPaymentProofRequest {
     pub payment_proof_url: String,
 }
+
+/// POST /upload/product-image
+/// Upload a product image (admin only).
+/// Returns public URL: /uploads/products/<uuid>.<ext>
+pub async fn upload_product_image(
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> AppResult<impl axum::response::IntoResponse> {
+    let field = multipart
+        .next_field()
+        .await
+        .map_err(|_| AppError::BadRequest("Failed to read multipart field".to_string()))?
+        .ok_or_else(|| AppError::BadRequest("No file provided".to_string()))?;
+
+    let content_type = field
+        .content_type()
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    if !ALLOWED_TYPES.contains(&content_type.as_str()) {
+        return Err(AppError::BadRequest(
+            "Only JPEG, PNG, and WebP images are allowed".to_string(),
+        ));
+    }
+
+    let ext = match content_type.as_str() {
+        "image/jpeg" => "jpg",
+        "image/png" => "png",
+        "image/webp" => "webp",
+        _ => "bin",
+    };
+
+    let data: Bytes = field
+        .bytes()
+        .await
+        .map_err(|_| AppError::BadRequest("Failed to read file data".to_string()))?;
+
+    if data.len() > MAX_SIZE {
+        return Err(AppError::BadRequest(
+            "File too large. Maximum size is 5 MB".to_string(),
+        ));
+    }
+
+    let upload_dir = PathBuf::from(&state.config.upload_dir).join("products");
+
+    tokio::fs::create_dir_all(&upload_dir)
+        .await
+        .map_err(|_| AppError::InternalServerError)?;
+
+    let filename = format!("{}.{}", Uuid::new_v4(), ext);
+    let filepath = upload_dir.join(&filename);
+
+    tokio::fs::write(&filepath, &data)
+        .await
+        .map_err(|_| AppError::InternalServerError)?;
+
+    let public_url = format!("{}/uploads/products/{}", state.config.base_url, filename);
+
+    Ok(response::created(serde_json::json!({
+        "url": public_url,
+    })))
+}

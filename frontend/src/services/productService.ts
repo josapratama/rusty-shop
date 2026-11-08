@@ -34,4 +34,12 @@ export const productService = {
 
   delete: (id: string) =>
     api.delete<ApiResponse<null>>(`/admin/products/${id}`),
+
+  uploadImage: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.post<ApiResponse<{ url: string }>>("/upload/product-image", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
 };

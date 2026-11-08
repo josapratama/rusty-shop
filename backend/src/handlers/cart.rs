@@ -25,6 +25,7 @@ struct CartItemRow {
     price: Decimal,
     product_image: Option<String>,
     stock: i32,
+    weight: Option<Decimal>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -85,7 +86,8 @@ pub async fn get_cart(
                   p.name AS product_name, p.slug AS product_slug, p.price,
                   (SELECT image_url FROM product_images
                    WHERE product_id = p.id AND is_primary = TRUE LIMIT 1) AS product_image,
-                  p.stock
+                  p.stock,
+                  p.weight
            FROM cart_items ci
            JOIN products p ON p.id = ci.product_id
            WHERE ci.cart_id = $1
@@ -111,6 +113,7 @@ pub async fn get_cart(
             "price": i.price,
             "quantity": i.quantity,
             "stock": i.stock,
+            "weight": i.weight,
             "subtotal": i.price * Decimal::from(i.quantity),
         })).collect::<Vec<_>>(),
         "total": total,

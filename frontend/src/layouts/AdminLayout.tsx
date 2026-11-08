@@ -7,6 +7,7 @@ import {
   ShoppingBag,
   TicketPercent,
   BarChart2,
+  Settings,
   LogOut,
   Menu,
   X,
@@ -30,6 +31,7 @@ const navItems: NavItem[] = [
   { to: "/admin/orders", label: "Pesanan", icon: ShoppingBag },
   { to: "/admin/coupons", label: "Kupon Promo", icon: TicketPercent },
   { to: "/admin/reports", label: "Laporan", icon: BarChart2 },
+  { to: "/admin/settings", label: "Pengaturan Toko", icon: Settings },
 ];
 
 export default function AdminLayout() {

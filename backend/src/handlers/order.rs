@@ -554,10 +554,11 @@ pub async fn cancel_order(
     struct OrderCancelCheck {
         id: Uuid,
         status: OrderStatus,
+        coupon_id: Option<Uuid>,
     }
 
     let order = sqlx::query_as::<_, OrderCancelCheck>(
-        "SELECT id, status FROM orders WHERE id = $1 AND user_id = $2",
+        "SELECT id, status, coupon_id FROM orders WHERE id = $1 AND user_id = $2",
     )
     .bind(id)
     .bind(user_id)
@@ -596,6 +597,14 @@ pub async fn cancel_order(
         sqlx::query("UPDATE products SET stock = stock + $1 WHERE id = $2")
             .bind(item.quantity)
             .bind(item.product_id)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    // Restore coupon usage if coupon was used
+    if let Some(cid) = order.coupon_id {
+        sqlx::query("UPDATE coupons SET used_count = GREATEST(0, used_count - 1) WHERE id = $1")
+            .bind(cid)
             .execute(&mut *tx)
             .await?;
     }
@@ -722,6 +731,78 @@ pub async fn admin_update_order_status(
     Path(id): Path<Uuid>,
     Json(body): Json<UpdateOrderStatusRequest>,
 ) -> AppResult<impl axum::response::IntoResponse> {
+    #[allow(dead_code)]
+    #[derive(sqlx::FromRow)]
+    struct OrderCurrentCheck {
+        id: Uuid,
+        status: OrderStatus,
+        coupon_id: Option<Uuid>,
+    }
+
+    let mut tx = state.pool.begin().await?;
+
+    let current = sqlx::query_as::<_, OrderCurrentCheck>(
+        "SELECT id, status, coupon_id FROM orders WHERE id = $1 FOR UPDATE",
+    )
+    .bind(id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
+
+    #[derive(sqlx::FromRow)]
+    struct RestockRow {
+        product_id: Uuid,
+        quantity: i32,
+    }
+
+    // If changing to cancelled from an active status -> restore stock & coupon
+    if current.status != OrderStatus::Cancelled && body.status == OrderStatus::Cancelled {
+        let items = sqlx::query_as::<_, RestockRow>(
+            "SELECT product_id, quantity FROM order_items WHERE order_id = $1",
+        )
+        .bind(id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        for item in items {
+            sqlx::query("UPDATE products SET stock = stock + $1 WHERE id = $2")
+                .bind(item.quantity)
+                .bind(item.product_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        if let Some(cid) = current.coupon_id {
+            sqlx::query("UPDATE coupons SET used_count = GREATEST(0, used_count - 1) WHERE id = $1")
+                .bind(cid)
+                .execute(&mut *tx)
+                .await?;
+        }
+    } else if current.status == OrderStatus::Cancelled && body.status != OrderStatus::Cancelled {
+        // If restoring a previously cancelled order -> re-deduct stock & re-increment coupon
+        let items = sqlx::query_as::<_, RestockRow>(
+            "SELECT product_id, quantity FROM order_items WHERE order_id = $1",
+        )
+        .bind(id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        for item in items {
+            sqlx::query("UPDATE products SET stock = GREATEST(0, stock - $1) WHERE id = $2")
+                .bind(item.quantity)
+                .bind(item.product_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        if let Some(cid) = current.coupon_id {
+            sqlx::query("UPDATE coupons SET used_count = used_count + 1 WHERE id = $1")
+                .bind(cid)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
+
     #[derive(sqlx::FromRow)]
     struct OrderWithUserRow {
         id: Uuid,
@@ -739,7 +820,8 @@ pub async fn admin_update_order_status(
         "UPDATE orders
          SET status = $1,
              courier = COALESCE($3, courier),
-             tracking_number = COALESCE($4, tracking_number)
+             tracking_number = COALESCE($4, tracking_number),
+             updated_at = NOW()
          WHERE id = $2
          RETURNING id, order_number, status, courier, tracking_number, shipping_phone, updated_at,
            (SELECT name FROM users WHERE id = orders.user_id) AS user_name,
@@ -749,9 +831,10 @@ pub async fn admin_update_order_status(
     .bind(id)
     .bind(&body.courier)
     .bind(&body.tracking_number)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Order not found".to_string()))?;
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
 
     // Send status update email (non-blocking)
     crate::utils::email::send_order_status_updated(

@@ -177,6 +177,7 @@ export interface CartItem {
   price: number;
   quantity: number;
   stock: number;
+  weight?: number | null;
   subtotal: number;
 }
 

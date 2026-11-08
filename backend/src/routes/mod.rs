@@ -14,7 +14,7 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
     config::AppState,
-    handlers::{admin, auth, cart, address, category, order, product, upload, user, coupon, review, wishlist},
+    handlers::{admin, auth, cart, address, category, order, product, upload, user, coupon, review, wishlist, config},
     middleware::auth::{require_admin, require_auth},
 };
 
@@ -77,6 +77,8 @@ fn public_routes() -> Router<AppState> {
         // Categories (public)
         .route("/categories", get(category::list_categories))
         .route("/categories/:slug", get(category::get_category))
+        // Store Config (public)
+        .route("/config", get(config::get_shop_config))
         // Coupons (validation)
         .route("/coupons/validate", post(coupon::validate_coupon))
 }
@@ -140,11 +142,16 @@ fn admin_routes(state: AppState) -> Router<AppState> {
         .route("/admin/orders", get(order::admin_list_orders))
         .route("/admin/orders/:id", get(order::admin_get_order))
         .route("/admin/orders/:id/status", patch(order::admin_update_order_status))
+        // Upload (Admin)
+        .route("/upload/product-image", post(upload::upload_product_image))
         // Coupons
         .route("/admin/coupons", get(coupon::admin_list_coupons))
         .route("/admin/coupons", post(coupon::admin_create_coupon))
         .route("/admin/coupons/:id", put(coupon::admin_update_coupon))
         .route("/admin/coupons/:id", delete(coupon::admin_delete_coupon))
+        // Settings / Config (Admin)
+        .route("/admin/config", get(config::get_shop_config))
+        .route("/admin/config", put(config::update_shop_config))
         .layer(middleware::from_fn(require_admin))
         .layer(middleware::from_fn_with_state(state, require_auth))
 }

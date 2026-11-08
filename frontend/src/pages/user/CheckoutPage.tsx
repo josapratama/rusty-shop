@@ -5,6 +5,7 @@ import { cartService } from "../../services/cartService";
 import { addressService } from "../../services/addressService";
 import { orderService } from "../../services/orderService";
 import { couponService } from "../../services/couponService";
+import { configService } from "../../services/configService";
 import { formatCurrency } from "../../utils/format";
 import LoadingSpinner from "../../components/ui/LoadingSpinner";
 import type {
@@ -77,6 +78,11 @@ export default function CheckoutPage() {
   } = useQuery<Address[]>({
     queryKey: ["addresses"],
     queryFn: () => addressService.list().then((r) => r.data.data),
+  });
+
+  const { data: config } = useQuery({
+    queryKey: ["config"],
+    queryFn: () => configService.get().then((r) => r.data.data),
   });
 
   // Auto-select default address
@@ -169,7 +175,15 @@ export default function CheckoutPage() {
 
   const subtotal = cart?.total ?? 0;
   const discountAmount = appliedCoupon ? appliedCoupon.discount_amount : 0;
-  const grandTotal = Math.max(0, subtotal - discountAmount);
+  
+  // Real-time weight-based shipping calculation matching backend
+  const totalWeightGrams = items.reduce(
+    (sum, item) => sum + (Number(item.weight) || 0) * item.quantity,
+    0
+  );
+  const ratePerGram = Number(config?.shipping_cost_per_gram || "0.5");
+  const shippingCost = Math.round(ratePerGram * totalWeightGrams);
+  const grandTotal = Math.max(0, subtotal - discountAmount) + shippingCost;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -483,14 +497,18 @@ export default function CheckoutPage() {
                   <span>-{formatCurrency(discountAmount)}</span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-gray-600">Ongkos kirim</span>
-                <span className="text-gray-500 text-xs">(Dihitung saat pesanan dibuat)</span>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">
+                  Ongkos kirim ({totalWeightGrams.toLocaleString("id-ID")}g)
+                </span>
+                <span className="font-medium text-gray-900">
+                  {formatCurrency(shippingCost)}
+                </span>
               </div>
             </div>
             <div className="border-t mt-3 pt-3">
               <div className="flex justify-between font-bold text-lg">
-                <span>Total Estimasi</span>
+                <span>Total Pembayaran</span>
                 <span className="text-primary-600">
                   {formatCurrency(grandTotal)}
                 </span>

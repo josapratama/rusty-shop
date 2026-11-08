@@ -18,6 +18,7 @@ interface Filters {
   search: string;
   min_price: string;
   max_price: string;
+  sort: string;
 }
 
 const emptyFilters: Filters = {
@@ -25,6 +26,7 @@ const emptyFilters: Filters = {
   search: "",
   min_price: "",
   max_price: "",
+  sort: "newest",
 };
 
 export default function CatalogPage() {
@@ -39,6 +41,7 @@ export default function CatalogPage() {
     ...(filters.search && { search: filters.search }),
     ...(filters.min_price && { min_price: Number(filters.min_price) }),
     ...(filters.max_price && { max_price: Number(filters.max_price) }),
+    ...(filters.sort && { sort: filters.sort }),
   };
 
   const { data, isLoading } = useQuery<PaginatedResponse<ProductListItem>>({
@@ -67,13 +70,28 @@ export default function CatalogPage() {
     <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Katalog Produk</h1>
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className="flex items-center gap-2 btn-secondary md:hidden"
-        >
-          <Filter size={16} />
-          Filter
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <span className="hidden sm:inline">Urutkan:</span>
+            <select
+              value={filters.sort}
+              onChange={(e) => handleFilterChange("sort", e.target.value)}
+              className="input-field text-sm py-1.5 px-3 bg-white"
+            >
+              <option value="newest">Terbaru</option>
+              <option value="price_asc">Harga: Rendah ke Tinggi</option>
+              <option value="price_desc">Harga: Tinggi ke Rendah</option>
+              <option value="name_asc">Nama (A - Z)</option>
+            </select>
+          </div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="flex items-center gap-2 btn-secondary md:hidden py-1.5"
+          >
+            <Filter size={16} />
+            Filter
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-6">
